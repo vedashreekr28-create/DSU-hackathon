@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+ecotwin/dataset
+ecotwin/models
+*.db
+*.sqlite
+*.sqlite3
+__pycache__
+*.pyc
+requirements-local.txt
+run_ecotwin.bat
+training_history.png

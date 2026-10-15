@@ -85,31 +85,44 @@ def api_classify_sample():
 def api_sample_image():
     """Provides a sample image path and preview URL from the dataset for testing."""
     waste_class = request.args.get("class", "plastic")
-    target_dir = config.DATA_DIR / waste_class
+    
+    if config.DATA_DIR.exists():
+        target_dir = config.DATA_DIR / waste_class
+        if target_dir.exists():
+            images = list(target_dir.glob("*.jpg"))
+            if images:
+                chosen = random.choice(images)
+                rel_path = f"{waste_class}/{chosen.name}"
+                return jsonify({
+                    "success": True,
+                    "class": waste_class,
+                    "image_path": str(chosen),
+                    "image_url": f"/dataset_image/{rel_path}",
+                })
 
-    if not target_dir.exists():
-        return jsonify({"success": False, "error": f"Class '{waste_class}' folder not found"}), 404
-
-    images = list(target_dir.glob("*.jpg"))
-    if not images:
-        return jsonify({"success": False, "error": "No images found"}), 404
-
-    # Pick a sample image (deterministic or random)
-    chosen = random.choice(images)
-    rel_path = f"{waste_class}/{chosen.name}"
-    preview_url = f"/dataset_image/{rel_path}"
-
+    # High-quality fallback sample images for cloud deployments without local dataset
+    sample_urls = {
+        "plastic": "https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=400",
+        "cardboard": "https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=400",
+        "glass": "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=400",
+        "metal": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400",
+        "paper": "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=400",
+        "trash": "https://images.unsplash.com/photo-1605600659873-d808a13e4d2a?w=400",
+    }
     return jsonify({
         "success": True,
         "class": waste_class,
-        "image_path": str(chosen),
-        "image_url": preview_url,
+        "image_path": None,
+        "image_url": sample_urls.get(waste_class, sample_urls["plastic"]),
     })
 
 @app.route("/dataset_image/<path:filename>")
 def serve_dataset_image(filename):
     """Serves dataset images for browser previewing in the UI."""
+    if not config.DATA_DIR.exists():
+        return "Dataset not hosted on serverless tier", 404
     return send_from_directory(str(config.DATA_DIR), filename)
+
 
 @app.route("/api/dispose", methods=["POST"])
 def api_dispose():
