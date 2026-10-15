@@ -35,10 +35,12 @@ def classify_view():
     return render_template("classify.html", student_balance=data["student_balance"])
 
 @app.route("/simulator")
+@app.route("/simu")
 def simulator_view():
     """Virtual Sensor Telemetry and Fleet Collection simulator."""
     data = get_dashboard_data()
     return render_template("simulator.html", bins=data["bins"], student_balance=data["student_balance"])
+
 
 # --- API ENDPOINTS ---
 
