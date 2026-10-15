@@ -5,7 +5,15 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from PIL import Image
-from tensorflow import keras
+import requests
+
+
+try:
+    from tensorflow import keras
+    HAS_LOCAL_TF = True
+except ImportError:
+    keras = None
+    HAS_LOCAL_TF = False
 
 import config
 from database import get_db_connection
@@ -22,6 +30,11 @@ _CACHED_MODEL = None
 def get_model():
     """Loads and caches the trained Keras model."""
     global _CACHED_MODEL
+    if not HAS_LOCAL_TF:
+        raise ImportError(
+            "TensorFlow is not installed in this environment. "
+            "Please configure INFERENCE_API_URL for remote inference or install TensorFlow locally."
+        )
     if _CACHED_MODEL is None:
         if not Path(config.MODEL_SAVE_PATH).exists():
             raise FileNotFoundError(
@@ -33,11 +46,42 @@ def get_model():
 
 def classify_waste_image(image_file_or_bytes):
     """
-    Runs actual inference using the trained CNN.
-    Returns predicted category, exact confidence score,
-    and flags for manual review if below the threshold.
+    Runs actual inference using either:
+    1. Remote AI inference API (if INFERENCE_API_URL is configured)
+    2. Local CNN model (if TensorFlow is installed locally)
+    Never fabricates predictions or confidence values.
     """
+    # 1. Check if external inference endpoint is configured
+    if config.INFERENCE_API_URL:
+        if isinstance(image_file_or_bytes, (str, Path)):
+            with open(image_file_or_bytes, "rb") as f:
+                img_data = f.read()
+        elif isinstance(image_file_or_bytes, bytes):
+            img_data = image_file_or_bytes
+        else:
+            img_data = image_file_or_bytes.read()
+
+        resp = requests.post(
+            f"{config.INFERENCE_API_URL.rstrip('/')}/api/classify",
+            files={"image": ("waste.jpg", img_data, "image/jpeg")},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            res_json = resp.json()
+            if res_json.get("success"):
+                return res_json["data"]
+        raise RuntimeError(f"Remote inference API returned error: {resp.text}")
+
+    # 2. Local CNN inference
+    if not HAS_LOCAL_TF:
+        raise RuntimeError(
+            "TensorFlow is not installed in this serverless environment (exceeds 250MB limit). "
+            "Please configure INFERENCE_API_URL in your Vercel settings to point to your AI inference endpoint, "
+            "or run EcoTwin locally."
+        )
+
     model = get_model()
+
 
     if isinstance(image_file_or_bytes, (str, Path)):
         img = Image.open(image_file_or_bytes).convert("RGB")

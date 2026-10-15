@@ -122,3 +122,25 @@ python ecotwin/src/test_digital_twin.py
 * **Software-Only Architecture:** This system requires no physical hardware. Sensor telemetry and collection trucks are software-simulated.
 * **Simulated Environmental Impact:** Carbon impact figures are simulated estimates derived from published EPA WARM and DEFRA circular recycling benchmark coefficients. These do not represent certified regulatory carbon credits, financial securities, or verified industrial offsets.
 * **Bin Capacity:** Capacities are estimated volumetric metrics based on item counts and typical container geometry.
+
+---
+
+## 9. Vercel Deployment & Architecture
+
+EcoTwin is architected for seamless hybrid serverless deployment on Vercel:
+
+### Why Decoupled Serverless Architecture?
+1. **Serverless Bundle Size Limit:** Vercel functions have a strict **250 MB uncompressed limit**. A standard `tensorflow` installation on Linux is ~500 MB+, which exceeds serverless package limits.
+2. **Ephemeral Storage:** Serverless filesystem writes are ephemeral. On Vercel, the application automatically uses `/tmp/ecotwin.db` for the session database, keeping the function fully functional without write-lock errors.
+3. **Decoupled AI Inference:** 
+   * **Local Environment:** Uses the local trained MobileNetV2 CNN directly.
+   * **Vercel Cloud:** To run real AI classification in production, configure the `INFERENCE_API_URL` environment variable in the Vercel project dashboard to point to a hosted inference worker (e.g. Hugging Face Spaces or Render). Predictions and confidence scores are never fabricated.
+
+### Deploying to Vercel in 2 Minutes:
+1. Log in to [Vercel](https://vercel.com) and click **"Add New Project"**.
+2. Select your repository: `vedashreekr28-create/DSU-hackathon`.
+3. In Project Settings:
+   * **Framework Preset:** `Other`
+   * **Root Directory:** `./`
+4. Click **Deploy**. Vercel will install `requirements.txt` and map all routes through `api/index.py` via `vercel.json`.
+

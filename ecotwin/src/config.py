@@ -22,9 +22,18 @@ CLASSES = ["cardboard", "glass", "metal", "paper", "plastic", "trash"]
 NUM_CLASSES = len(CLASSES)
 
 # Digital Twin & Campus Settings
-DB_PATH = BASE_DIR / "ecotwin.db"
+if os.environ.get("VERCEL"):
+    import tempfile
+    DB_PATH = Path(tempfile.gettempdir()) / "ecotwin.db"
+else:
+    DB_PATH = BASE_DIR / "ecotwin.db"
+
 CONFIDENCE_THRESHOLD = 0.65  # If confidence < 0.65, flagged for manual review
 MAX_BIN_CAPACITY_DEFAULT = 40  # Default estimated max item capacity per bin
 WARNING_FILL_THRESHOLD = 80.0  # Alert when fill >= 80%
 FULL_FILL_THRESHOLD = 95.0     # Alert when fill >= 95%
+
+# External Inference URL (Optional when deployed on serverless environments)
+INFERENCE_API_URL = os.environ.get("INFERENCE_API_URL")
+
 

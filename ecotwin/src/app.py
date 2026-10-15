@@ -13,11 +13,13 @@ from digital_twin_service import (
     get_dashboard_data,
 )
 
-app = Flask(__name__)
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
 app.config["SECRET_KEY"] = "ecotwin-campus-digital-twin-2026"
 
 # Ensure database is initialized at launch
 init_db()
+
 
 @app.route("/")
 def dashboard():
