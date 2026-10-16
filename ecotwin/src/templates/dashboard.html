@@ -25,6 +25,33 @@
         </div>
     </div>
 
+    <!-- Supabase PostgreSQL Connection & Data Source Status Banner -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2.5">
+            {% if data.database_status and data.database_status.is_connected %}
+            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="font-bold text-emerald-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-database text-emerald-600"></i> Supabase PostgreSQL Connected
+            </span>
+            <span class="text-slate-500 hidden md:inline">({{ data.database_status.supabase_url }})</span>
+            {% else %}
+            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+            <span class="font-bold text-slate-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-server text-blue-600"></i> Local Database Engine (Supabase PostgreSQL Compatible)
+            </span>
+            <span class="text-slate-400 hidden md:inline">• Live Cloud URL not configured in .env (falling back to local schema replica)</span>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                Model: {{ data.database_status.model_version | default('mobilenetv2-v1.0') }}
+            </span>
+            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Source: live_camera
+            </span>
+        </div>
+    </div>
+
     <!-- Active Alerts Banner -->
     {% if data.active_alerts %}
     <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl shadow-sm space-y-2">
@@ -294,9 +321,63 @@
                 </p>
             </div>
         </div>
+    <!-- Circular Pathways & Recycling Operations (Supabase PostgreSQL Views) -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+            <div>
+                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-route text-eco-600"></i>
+                    Circular Processing Pathways & Operations
+                    <span class="text-[10px] font-mono uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">SQL Views</span>
+                </h3>
+                <p class="text-xs text-slate-500">Live operational metrics aggregated from <code class="font-mono text-[11px] bg-slate-100 px-1 rounded">view_pathway_summary</code> and <code class="font-mono text-[11px] bg-slate-100 px-1 rounded">view_operations_status</code>.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+                <span class="px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">
+                    Operations: <strong>{{ data.supabase_views.operations_status.total_operations | default(0) }}</strong> total
+                </span>
+                <span class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                    Completed: <strong>{{ data.supabase_views.operations_status.completed_operations | default(0) }}</strong>
+                </span>
+                {% if data.supabase_views.operations_status.pending_operations %}
+                <span class="px-2 py-1 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                    Review Pending: <strong>{{ data.supabase_views.operations_status.pending_operations }}</strong>
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Pathway Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            {% for pw in data.supabase_views.pathway_summary %}
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold capitalize text-slate-800">{{ pw.processing_pathway }}</span>
+                        <span class="text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold 
+                            {% if pw.processing_pathway == 'recycling' %}bg-blue-100 text-blue-800
+                            {% elif pw.processing_pathway == 'landfill' %}bg-slate-200 text-slate-700
+                            {% elif pw.processing_pathway == 'pending_review' %}bg-amber-100 text-amber-800
+                            {% else %}bg-emerald-100 text-emerald-800{% endif %}">
+                            Pathway
+                        </span>
+                    </div>
+                    <p class="text-xl font-black text-slate-800 mt-2">{{ pw.total_count }} <span class="text-xs font-normal text-slate-400">items</span></p>
+                </div>
+                <div class="pt-2 mt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Completed: <strong>{{ pw.completed_count }}</strong></span>
+                    <span class="text-[10px] text-slate-400 italic">Simulated</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-span-4 p-4 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs">
+                No recycling operations recorded yet. Classify an item via live camera to initiate operations.
+            </div>
+            {% endfor %}
+        </div>
     </div>
 
-    <!-- Recent Activity Tables (2 columns) -->
+    <!-- Recent Activity Tables (3 columns / grid) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Recent Disposals -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
@@ -367,6 +448,87 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- Supabase PostgreSQL Live Classifications Audit Table (view_recent_classifications) -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+            <div>
+                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-table-list text-emerald-600"></i>
+                    PostgreSQL Live Audit: Waste Classifications & Operations
+                    <span class="text-[10px] font-mono uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">view_recent_classifications</span>
+                </h3>
+                <p class="text-xs text-slate-500">Records created directly by the trusted backend from verified live camera capture sessions. Image bytes are never permanently stored.</p>
+            </div>
+            <span class="text-[11px] text-slate-400 font-medium">Source: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-emerald-700 font-semibold">{{ data.supabase_views.source | default('local_sqlite_replica') }}</code></span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-50 text-slate-500 uppercase font-semibold text-[10px]">
+                    <tr>
+                        <th class="p-2.5">Record UUID</th>
+                        <th class="p-2.5">Category</th>
+                        <th class="p-2.5">Confidence</th>
+                        <th class="p-2.5">Capture Source</th>
+                        <th class="p-2.5">Circular Pathway</th>
+                        <th class="p-2.5">Operation Status</th>
+                        <th class="p-2.5">Type</th>
+                        <th class="p-2.5">Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                    {% for item in data.supabase_views.recent_classifications %}
+                    <tr class="hover:bg-slate-50/80">
+                        <td class="p-2.5 text-slate-500 font-semibold truncate max-w-[120px]" title="{{ item.classification_id }}">
+                            {{ item.classification_id[:8] }}...
+                        </td>
+                        <td class="p-2.5 font-bold capitalize text-slate-800 font-sans">
+                            {{ item.waste_category }}
+                        </td>
+                        <td class="p-2.5 font-bold text-emerald-700">
+                            {{ (item.confidence * 100)|round(1) }}%
+                        </td>
+                        <td class="p-2.5 text-slate-500">
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-sans font-semibold text-[10px] border border-emerald-200">
+                                {{ item.capture_source }}
+                            </span>
+                        </td>
+                        <td class="p-2.5 capitalize font-sans">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold
+                                {% if item.processing_pathway == 'recycling' %}bg-blue-100 text-blue-800
+                                {% elif item.processing_pathway == 'landfill' %}bg-slate-200 text-slate-700
+                                {% elif item.processing_pathway == 'pending_review' %}bg-amber-100 text-amber-800
+                                {% else %}bg-emerald-100 text-emerald-800{% endif %}">
+                                {{ item.processing_pathway | default('recycling') }}
+                            </span>
+                        </td>
+                        <td class="p-2.5 capitalize font-sans">
+                            <span class="px-1.5 py-0.5 rounded font-bold text-[10px]
+                                {% if item.operation_status == 'completed' %}bg-emerald-100 text-emerald-800
+                                {% elif item.operation_status == 'pending' %}bg-amber-100 text-amber-800
+                                {% else %}bg-slate-100 text-slate-700{% endif %}">
+                                {{ item.operation_status | default('completed') }}
+                            </span>
+                        </td>
+                        <td class="p-2.5 font-sans text-slate-400 text-[10px] italic">
+                            {{ 'Simulated' if item.is_simulated else 'Measured' }}
+                        </td>
+                        <td class="p-2.5 text-slate-400 text-[10px]">
+                            {{ item.created_at.split('T')[1].split('.')[0] if 'T' in item.created_at else item.created_at }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="p-6 text-center text-slate-400 font-sans">
+                            No classifications logged in PostgreSQL yet. Capture a photo on the <a href="/classify" class="text-emerald-600 underline font-semibold">Live Camera page</a> to record real-time classifications.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

@@ -3,8 +3,11 @@ import random
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 
+import uuid
 import config
 from database import init_db, get_db_connection
+from waste_streams import get_stream_for_class, CLASS_TO_STREAM_MAPPING
+import supabase_client
 from digital_twin_service import (
     classify_waste_image,
     process_disposal_event,
@@ -15,7 +18,10 @@ from digital_twin_service import (
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
-app.config["SECRET_KEY"] = "ecotwin-campus-digital-twin-2026"
+raw_secret = os.environ.get("SECRET_KEY")
+if not raw_secret or "replace-with" in raw_secret:
+    raw_secret = "ecotwin-campus-digital-twin-2026"
+app.config["SECRET_KEY"] = raw_secret
 
 # Ensure database is initialized at launch
 init_db()
@@ -51,79 +57,180 @@ def api_dashboard():
     data = get_dashboard_data(student_id=student_id)
     return jsonify({"success": True, "data": data})
 
+import io
+import base64
+from PIL import Image
+
+# Allowed live capture image formats
+ALLOWED_FRAME_FORMATS = {"JPEG", "JPG", "PNG", "WEBP"}
+PROHIBITED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".webm", ".mkv", ".m4v", ".wmv", ".3gp"}
+
 @app.route("/api/classify", methods=["POST"])
 def api_classify():
-    """Uploads an image file and runs CNN inference."""
-    if "image" not in request.files:
-        return jsonify({"success": False, "error": "No image uploaded"}), 400
+    """
+    Classifies waste from a live device camera photo capture.
+    Strictly rejects external file pickers, gallery uploads, and prerecorded videos.
+    """
+    capture_source = (
+        request.headers.get("X-Capture-Source")
+        or request.form.get("capture_source")
+    )
+    image_bytes = None
 
-    file = request.files["image"]
-    if file.filename == "":
-        return jsonify({"success": False, "error": "Empty filename"}), 400
+    # 1. Handle multipart form-data capture
+    if "image" in request.files or "live_frame" in request.files:
+        file = request.files.get("live_frame") or request.files.get("image")
+        filename = (file.filename or "").lower()
+        content_type = (file.content_type or "").lower()
 
-    try:
+        # Reject prerecorded videos
+        if content_type.startswith("video/") or any(filename.endswith(ext) for ext in PROHIBITED_VIDEO_EXTENSIONS):
+            return jsonify({
+                "success": False,
+                "error": "Prerecorded video files and video streams are strictly prohibited. Single-frame live camera capture is required."
+            }), 415
+
+        # Verify live camera attestation
+        if capture_source != "live_camera":
+            return jsonify({
+                "success": False,
+                "error": "Direct file uploads, gallery selection, and external files are not supported. Waste classification requires verified live camera capture."
+            }), 400
+
         image_bytes = file.read()
+
+    # 2. Handle JSON base64 frame from live camera canvas
+    elif request.is_json:
+        payload = request.get_json() or {}
+        capture_source = capture_source or payload.get("capture_source")
+
+        if capture_source != "live_camera":
+            return jsonify({
+                "success": False,
+                "error": "Direct file uploads and external inputs are not supported. Waste classification requires verified live camera capture."
+            }), 400
+
+        data_url = payload.get("image_data") or payload.get("image")
+        if not data_url:
+            return jsonify({"success": False, "error": "No camera frame data received"}), 400
+
+        # Reject video data URIs
+        if data_url.startswith("data:video/"):
+            return jsonify({
+                "success": False,
+                "error": "Video data is prohibited. Single-frame live camera capture is required."
+            }), 415
+
+        try:
+            if "," in data_url:
+                header, encoded = data_url.split(",", 1)
+            else:
+                encoded = data_url
+            image_bytes = base64.b64decode(encoded)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Invalid base64 frame payload: {str(e)}"}), 400
+    else:
+        return jsonify({
+            "success": False,
+            "error": "Invalid request. Please capture a live photograph using the device camera."
+        }), 400
+
+    # 3. Size validation
+    if not image_bytes or len(image_bytes) < 200:
+        return jsonify({"success": False, "error": "Empty or corrupted camera frame received"}), 400
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        return jsonify({"success": False, "error": "Captured frame exceeds maximum size limit (10MB)"}), 413
+
+    # 4. Strict format & dimension validation via PIL
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img_fmt = (img.format or "").upper()
+        if img_fmt not in ALLOWED_FRAME_FORMATS:
+            return jsonify({
+                "success": False,
+                "error": f"Unsupported frame format '{img_fmt}'. Live camera frames must be JPEG, PNG, or WebP."
+            }), 400
+
+        width, height = img.size
+        if width < 32 or height < 32:
+            return jsonify({"success": False, "error": "Captured frame resolution is too low"}), 400
+        if width > 4096 or height > 4096:
+            return jsonify({"success": False, "error": "Captured frame resolution exceeds maximum dimensions"}), 400
+
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Frame validation failed: {str(e)}"}), 400
+
+    # 5. Execute Deep Learning CNN Inference
+    try:
         result = classify_waste_image(image_bytes)
+        result["input_mode"] = "live_camera_capture"
+        result["verified_live"] = True
+
+        # Record verified classification in Supabase PostgreSQL schema
+        pred_class = result["predicted_class"]
+        conf_val = result["confidence"]
+        event_uuid = f"cls-{uuid.uuid4()}"
+
+        classification_rec = supabase_client.record_waste_classification(
+            waste_category=pred_class,
+            confidence=conf_val,
+            model_version=config.MODEL_VERSION,
+            capture_source="live_camera",
+            classification_status="successful",
+            metadata={
+                "event_uuid": event_uuid,
+                "needs_manual_review": result.get("needs_manual_review", False),
+                "review_status": result.get("review_status"),
+                "probabilities": result.get("probabilities", {}),
+            }
+        )
+
+        # Create recycling operation based on verified material and confidence
+        pathway = supabase_client.determine_processing_pathway(
+            pred_class,
+            conf_val,
+            needs_manual_review=result.get("needs_manual_review", False)
+        )
+        op_status = "pending" if result.get("needs_manual_review") else "completed"
+
+        operation_rec = supabase_client.create_recycling_operation(
+            classification_id=classification_rec["id"],
+            processing_pathway=pathway,
+            operation_status=op_status,
+            is_simulated=True
+        )
+
+        result["classification_id"] = classification_rec["id"]
+        result["operation_id"] = operation_rec["id"]
+        result["processing_pathway"] = pathway
+        result["operation_status"] = op_status
+        result["database_status"] = supabase_client.get_database_status()
+
         return jsonify({"success": True, "data": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/classify_sample", methods=["POST"])
 def api_classify_sample():
-    """Classifies an existing sample image from the dataset path."""
-    payload = request.get_json() or {}
-    image_path = payload.get("image_path")
-
-    if not image_path or not Path(image_path).exists():
-        return jsonify({"success": False, "error": "Valid image_path required"}), 400
-
-    try:
-        result = classify_waste_image(image_path)
-        return jsonify({"success": True, "data": result})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    """Disabled: EcoTwin strictly requires live device camera capture."""
+    return jsonify({
+        "success": False,
+        "error": "Dataset sample selection has been disabled. EcoTwin now enforces live device camera capture only."
+    }), 403
 
 @app.route("/api/sample_image", methods=["GET"])
 def api_sample_image():
-    """Provides a sample image path and preview URL from the dataset for testing."""
-    waste_class = request.args.get("class", "plastic")
-    
-    if config.DATA_DIR.exists():
-        target_dir = config.DATA_DIR / waste_class
-        if target_dir.exists():
-            images = list(target_dir.glob("*.jpg"))
-            if images:
-                chosen = random.choice(images)
-                rel_path = f"{waste_class}/{chosen.name}"
-                return jsonify({
-                    "success": True,
-                    "class": waste_class,
-                    "image_path": str(chosen),
-                    "image_url": f"/dataset_image/{rel_path}",
-                })
-
-    # High-quality fallback sample images for cloud deployments without local dataset
-    sample_urls = {
-        "plastic": "https://images.unsplash.com/photo-1526947425960-945c6e72858f?w=400",
-        "cardboard": "https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=400",
-        "glass": "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=400",
-        "metal": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400",
-        "paper": "https://images.unsplash.com/photo-1603484477859-abe6a73f9366?w=400",
-        "trash": "https://images.unsplash.com/photo-1605600659873-d808a13e4d2a?w=400",
-    }
+    """Disabled: EcoTwin strictly requires live device camera capture."""
     return jsonify({
-        "success": True,
-        "class": waste_class,
-        "image_path": None,
-        "image_url": sample_urls.get(waste_class, sample_urls["plastic"]),
-    })
+        "success": False,
+        "error": "Sample image browsing is disabled. Please capture a photo with your device camera."
+    }), 403
 
 @app.route("/dataset_image/<path:filename>")
 def serve_dataset_image(filename):
-    """Serves dataset images for browser previewing in the UI."""
-    if not config.DATA_DIR.exists():
-        return "Dataset not hosted on serverless tier", 404
-    return send_from_directory(str(config.DATA_DIR), filename)
+    """Disabled: Direct dataset image previewing is disabled."""
+    return "Dataset image preview disabled in live camera capture mode", 403
 
 
 @app.route("/api/dispose", methods=["POST"])
@@ -131,6 +238,7 @@ def api_dispose():
     """
     Submits and accepts a waste disposal event.
     Guarantees idempotency via event_uuid.
+    Synchronizes digital twin and updates Supabase recycling_bins load.
     """
     payload = request.get_json() or {}
     required = ["predicted_class", "confidence", "accepted_class"]
@@ -149,7 +257,71 @@ def api_dispose():
             was_overridden=bool(payload.get("was_overridden", False)),
             image_name=payload.get("image_name"),
         )
+
+        # Synchronize recycling_bins load in Supabase PostgreSQL / replica
+        loc_id = payload.get("location_id", "LIB")
+        acc_class = payload["accepted_class"]
+        stream_id = get_stream_for_class(acc_class)
+        mapping = CLASS_TO_STREAM_MAPPING.get(acc_class, {})
+        weight_delta = mapping.get("est_weight_kg", 0.05)
+
+        bin_telemetry = supabase_client.update_recycling_bin_load(
+            location_code=loc_id,
+            accepted_category=stream_id,
+            item_delta=1,
+            weight_kg_delta=weight_delta
+        )
+        result["bin_telemetry"] = bin_telemetry
+        result["database_status"] = supabase_client.get_database_status()
+
         return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/database_status", methods=["GET"])
+def api_database_status():
+    """Returns database backend status (Supabase PostgreSQL vs local replica)."""
+    return jsonify({"success": True, "data": supabase_client.get_database_status()})
+
+@app.route("/api/supabase/views", methods=["GET"])
+def api_supabase_views():
+    """Returns real-time database view statistics."""
+    try:
+        views = supabase_client.fetch_dashboard_views()
+        return jsonify({"success": True, "data": views})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/supabase/bins", methods=["GET"])
+def api_supabase_bins():
+    """Returns virtual bin capacity and utilization view."""
+    try:
+        views = supabase_client.fetch_dashboard_views()
+        return jsonify({"success": True, "data": views.get("bins_utilization", [])})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/supabase/classifications", methods=["GET"])
+def api_supabase_classifications():
+    """Returns recent classification activity view."""
+    try:
+        views = supabase_client.fetch_dashboard_views()
+        return jsonify({"success": True, "data": views.get("recent_classifications", [])})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/supabase/operations", methods=["GET"])
+def api_supabase_operations():
+    """Returns pathway summary view."""
+    try:
+        views = supabase_client.fetch_dashboard_views()
+        return jsonify({
+            "success": True,
+            "data": {
+                "pathway_summary": views.get("pathway_summary", []),
+                "operations_status": views.get("operations_status", {}),
+            }
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

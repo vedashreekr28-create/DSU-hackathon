@@ -81,6 +81,17 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 4. Configure Environment Variables
+Copy the template configuration file:
+```bash
+copy .env.example .env    # On Windows
+# cp .env.example .env     # On Linux / macOS
+```
+Edit `.env` with your project settings:
+* `SUPABASE_URL`: Your Supabase Project URL (`https://<project-ref>.supabase.co`)
+* `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`: Found in Supabase Dashboard -> Project Settings -> API.
+* `SECRET_KEY`: Generate a random production secret: `python -c "import secrets; print(secrets.token_hex(24))"`
+
 ---
 
 ## 5. Running the Application
@@ -102,22 +113,62 @@ Open your browser to:
 
 ## 6. Running Automated Tests
 
-Run the full 9-point unit test suite verifying CNN inference, capacity calculations, idempotency, rewards ledger, alerts, and collection events:
+Run the full automated test suites verifying CNN inference, capacity calculations, idempotency, rewards ledger, alerts, live camera restrictions, collection events, and Supabase PostgreSQL persistence:
+
 ```bash
+# 1. Supabase PostgreSQL schema, views, and RLS test suite
+python ecotwin/src/test_supabase_backend.py
+
+# 2. Live Camera Only restrictions and validation test suite
+python ecotwin/src/test_live_camera_workflow.py
+
+# 3. Digital Twin core telemetry and idempotency test suite
 python ecotwin/src/test_digital_twin.py
 ```
 
 ---
 
-## 7. Interactive Features
+## 7. Supabase PostgreSQL Database Integration
+
+EcoTwin features a production-grade **Supabase PostgreSQL** backend with a dual-engine architecture:
+* **Live Supabase Cloud:** When `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` are configured in `.env`, the system automatically persists all classifications, circular operations, and bin telemetry to Supabase.
+* **Local Schema Replica:** When running in offline or demo mode without credentials, it automatically falls back to an identical local database replica, ensuring zero downtime and complete local testing without breaking.
+
+### Database Tables:
+1. `waste_classifications`: Stores every classification from live camera captures (`id`, `waste_category`, `confidence`, `model_version`, `capture_source='live_camera'`, `classification_status`, `created_at`, `metadata`). **Image data and base64 strings are strictly prohibited from permanent storage.**
+2. `recycling_operations`: Tracks circular digital-twin operations (`id`, `classification_id`, `processing_pathway`, `operation_status`, `is_simulated`, timestamps). Pathways: `recycling`, `landfill`, `pending_review`, `composting`, `special_handling`. Uncertain classifications (<65% confidence) are automatically held for review.
+3. `recycling_bins`: Virtual campus segregation bins tracking `capacity_kg`, `current_load_kg`, `item_count`, and status (`available`, `near_capacity`, `full`). Weights are derived from benchmark emission factors rather than invented from photographs.
+
+### Dashboard SQL Views:
+* `view_total_classifications`: Total and successful counts, average confidence, last active timestamp.
+* `view_category_distribution`: Category-wise breakdown with percentage distribution.
+* `view_recent_classifications`: Live audit stream joining classifications and circular processing pathways.
+* `view_pathway_summary`: Processing pathway aggregates with completed and pending review totals.
+* `view_operations_status`: Operational counts across pending, processing, completed, and failed states.
+* `view_bin_utilization`: Capacity, kilogram load, item count, and fill percentages per virtual bin.
+
+### Applying Migrations to Supabase:
+1. Log in to [Supabase Dashboard](https://supabase.com/dashboard) and select your project.
+2. Go to **SQL Editor** -> **New Query**.
+3. Copy the contents of [`supabase/migrations/001_initial_schema.sql`](supabase/migrations/001_initial_schema.sql) and paste them into the editor.
+4. Click **Run**.
+5. Copy your project credentials into `.env`:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your SUPABASE_URL and SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
+   ```
+
+---
+
+## 8. Interactive Features
 
 * **Digital Twin Dashboard (`/`):** Live telemetry for 12 campus bins across 4 locations (Library, Cafeteria, Engineering Quad, Student Center), tracking fill levels, waste distributions, active alerts, and student incentive balances.
-* **AI Waste Classifier (`/classify`):** Image upload or quick sample testing. Displays real confidence percentages, flags items below the 65% threshold for manual review, and allows manual category overrides to prevent contamination.
+* **AI Waste Classifier (`/classify`):** Real-time live camera capture only using native `navigator.mediaDevices.getUserMedia()`. Captures a live frame from device video, displays real MobileNetV2 confidence percentages, disposal guidance, circular recycling pathways, and updates the digital twin database. File uploads, gallery browsing, and prerecorded videos are strictly rejected by the workflow and API.
 * **Virtual Sensor Simulator (`/simulator`):** Purely software-based IoT telemetry simulation. Adjust bin fill levels to test threshold alerts (≥80% Nearly Full, ≥95% Collection Required), alert deduplication, and fleet collection resets.
 
 ---
 
-## 8. Disclaimers & Notes
+## 9. Disclaimers & Notes
 
 * **Software-Only Architecture:** This system requires no physical hardware. Sensor telemetry and collection trucks are software-simulated.
 * **Simulated Environmental Impact:** Carbon impact figures are simulated estimates derived from published EPA WARM and DEFRA circular recycling benchmark coefficients. These do not represent certified regulatory carbon credits, financial securities, or verified industrial offsets.
@@ -125,7 +176,7 @@ python ecotwin/src/test_digital_twin.py
 
 ---
 
-## 9. Vercel Deployment & Architecture
+## 10. Vercel Deployment & Architecture
 
 EcoTwin is architected for seamless hybrid serverless deployment on Vercel:
 

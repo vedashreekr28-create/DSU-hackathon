@@ -23,6 +23,7 @@ from waste_streams import (
     calculate_co2_saving,
     get_stream_for_class,
 )
+import supabase_client
 
 # Global cached model instance to avoid repeated disk reads
 _CACHED_MODEL = None
@@ -128,6 +129,8 @@ def classify_waste_image(image_file_or_bytes):
         "potential_ecocoins": mapping.get("ecocoin_reward", 0),
         "estimated_co2_kg": co2_est,
         "rationale": mapping.get("rationale", ""),
+        "disposal_guidance": mapping.get("disposal_guidance", "Standard campus waste segregation."),
+        "recycling_pathway": mapping.get("pathway", "Standard municipal sorting."),
     }
 
 def process_disposal_event(
@@ -298,6 +301,9 @@ def process_disposal_event(
             "ecocoins_awarded": reward_amount,
             "co2_saved_kg": co2_saved,
             "is_contamination": bool(is_contamination),
+            "accepted_class": accepted_class,
+            "recycling_pathway": mapping.get("pathway", "Standard municipal sorting."),
+            "disposal_guidance": mapping.get("disposal_guidance", "Standard campus waste segregation."),
         }
 
     finally:
@@ -528,6 +534,14 @@ def get_dashboard_data(student_id: str = "student_101"):
         )
         recent_collections = [dict(row) for row in cursor.fetchall()]
 
+        # 9. Supabase PostgreSQL Views Data
+        try:
+            supabase_views = supabase_client.fetch_dashboard_views()
+            database_status = supabase_client.get_database_status()
+        except Exception as e:
+            supabase_views = {}
+            database_status = {"is_connected": False, "mode": "local_fallback", "error": str(e)}
+
         return {
             "bins": bins,
             "total_items": total_items,
@@ -545,6 +559,8 @@ def get_dashboard_data(student_id: str = "student_101"):
             "student_ledger": student_ledger,
             "recent_collections": recent_collections,
             "confidence_threshold": config.CONFIDENCE_THRESHOLD,
+            "supabase_views": supabase_views,
+            "database_status": database_status,
         }
     finally:
         conn.close()

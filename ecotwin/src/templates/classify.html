@@ -1,275 +1,714 @@
 {% extends "layout.html" %}
 
-{% block title %}AI Waste Classifier & Segregation - EcoTwin{% endblock %}
+{% block title %}Live Camera Waste Classification - EcoTwin{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto space-y-6">
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <div>
-            <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-camera-retro text-eco-600"></i>
-                AI Waste Classification & Verified Segregation
-            </h1>
-            <p class="text-xs text-slate-500 mt-1">
-                Upload or select an item image. The trained MobileNetV2 CNN evaluates the waste category with actual confidence metrics. You can review or manually override the classification before confirming campus disposal.
-            </p>
-        </div>
 
-        <!-- Sample Quick Selector -->
-        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            <label class="block text-xs font-bold text-slate-700 mb-2">
-                <i class="fa-solid fa-vial mr-1 text-emerald-600"></i> Quick Test: Select Sample Dataset Image
-            </label>
-            <div class="flex flex-wrap gap-2" id="sample-buttons">
-                <button type="button" onclick="loadSample('plastic')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Plastic Bottle
-                </button>
-                <button type="button" onclick="loadSample('glass')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Glass Jar
-                </button>
-                <button type="button" onclick="loadSample('cardboard')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Cardboard Box
-                </button>
-                <button type="button" onclick="loadSample('paper')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Paper Sheet
-                </button>
-                <button type="button" onclick="loadSample('metal')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Metal Can
-                </button>
-                <button type="button" onclick="loadSample('trash')" class="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold hover:border-emerald-500 hover:text-emerald-700 transition">
-                    🧪 Residual Trash
-                </button>
-            </div>
-        </div>
-
-        <!-- File Upload Area -->
-        <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-emerald-500 transition cursor-pointer bg-slate-50/50" id="drop-zone">
-            <input type="file" id="image-input" accept="image/*" class="hidden">
-            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
-            <p class="text-sm font-semibold text-slate-700">Click to upload or drag & drop a waste image</p>
-            <p class="text-xs text-slate-400 mt-1">Supports JPG, PNG, WebP</p>
-        </div>
-
-        <!-- Image Preview & Location Choice -->
-        <div id="preview-section" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+    <!-- Header & Protocol Notice -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-                <span class="block text-xs font-bold text-slate-600 mb-1">Image Preview:</span>
-                <img id="image-preview" src="" alt="Waste Image" class="w-full h-56 object-cover rounded-xl border border-slate-200 shadow-inner bg-slate-100">
-                
-                <div class="mt-3">
-                    <label class="block text-xs font-bold text-slate-700 mb-1">
-                        <i class="fa-solid fa-location-dot text-emerald-600 mr-1"></i> Campus Disposal Location:
-                    </label>
-                    <select id="location-select" class="w-full text-xs font-medium bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500">
-                        <option value="LIB">Central Library</option>
-                        <option value="CAF">Food Court / Cafeteria</option>
-                        <option value="ENG">Engineering Quad</option>
-                        <option value="STU">Student Activities Center</option>
-                    </select>
-                </div>
+                <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-camera-viewfinder text-eco-600"></i>
+                    EcoTwin Live Camera Waste Classifier
+                </h1>
+                <p class="text-xs text-slate-500 mt-1">
+                    Real-time waste segregation using browser camera capture and deep learning CNN inference.
+                </p>
             </div>
+            <!-- Protocol Badge -->
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 self-start sm:self-auto">
+                <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                <span>Live Camera Verification Only</span>
+            </div>
+        </div>
 
-            <!-- Inference Results Panel -->
-            <div id="inference-results" class="space-y-4">
-                <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-500">AI Vision Output</span>
-                        <span id="review-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold"></span>
-                    </div>
-
-                    <div>
-                        <div class="flex items-baseline justify-between">
-                            <h2 id="pred-class-name" class="text-2xl font-black capitalize text-slate-800">Analyzing...</h2>
-                            <span id="pred-conf-score" class="text-sm font-bold text-emerald-600 font-mono">--%</span>
-                        </div>
-                        <p id="pred-rationale" class="text-xs text-slate-500 mt-1"></p>
-                    </div>
-
-                    <!-- Recommended Stream -->
-                    <div class="p-2.5 rounded-lg border bg-white flex items-center justify-between text-xs">
-                        <div>
-                            <span class="text-slate-400 block text-[10px] uppercase font-bold">Mapped Campus Stream</span>
-                            <span id="pred-stream-name" class="font-bold text-slate-800">--</span>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-slate-400 block text-[10px] uppercase font-bold">EcoCoin Reward</span>
-                            <span id="pred-reward" class="font-bold text-amber-600">--</span>
-                        </div>
-                    </div>
-
-                    <!-- Review / Override Selection -->
-                    <div class="pt-2 border-t border-slate-200">
-                        <label class="block text-xs font-bold text-slate-700 mb-1">
-                            Confirm or Manually Correct Category:
-                        </label>
-                        <select id="override-select" class="w-full text-xs font-medium bg-white border border-slate-300 rounded-lg p-2">
-                            <option value="cardboard">Cardboard (Dry Recyclables)</option>
-                            <option value="glass">Glass (Glass & Metals)</option>
-                            <option value="metal">Metal (Glass & Metals)</option>
-                            <option value="paper">Paper (Dry Recyclables)</option>
-                            <option value="plastic">Plastic (Dry Recyclables)</option>
-                            <option value="trash">Residual Trash (General Waste)</option>
-                        </select>
-                        <p class="text-[10px] text-slate-400 mt-1">
-                            *If confidence was below 65%, manually verifying the item ensures accurate segregation.
-                        </p>
-                    </div>
-
-                    <!-- Confirm Disposal Button -->
-                    <button id="btn-confirm-dispose" onclick="submitDisposal()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow transition flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-check"></i> Accept & Confirm Disposal
-                    </button>
-                </div>
-
-                <!-- Probability Distribution -->
-                <div class="p-3 bg-white rounded-xl border border-slate-200">
-                    <span class="block text-[11px] font-bold text-slate-600 mb-2">Class Confidence Distribution:</span>
-                    <div id="prob-bars" class="space-y-1.5 text-[11px]"></div>
-                </div>
+        <!-- Strict Input Notice Banner -->
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-start gap-2.5">
+            <i class="fa-solid fa-circle-info text-blue-500 mt-0.5 text-sm"></i>
+            <div>
+                <span class="font-bold text-slate-700">Strict Live Capture Protocol:</span>
+                In accordance with hackathon audit standards, only live photos captured directly through an active device camera session are accepted. File uploads, gallery browsing, drag-and-drop, and prerecorded videos are disabled.
+                <span class="text-slate-500 block text-[11px] mt-0.5">
+                    *Note: Browser camera access requires HTTPS or a local origin (<code class="bg-slate-200 px-1 py-0.5 rounded text-[10px]">http://localhost</code> / <code class="bg-slate-200 px-1 py-0.5 rounded text-[10px]">127.0.0.1</code>).
+                </span>
             </div>
         </div>
     </div>
+
+    <!-- Live Camera Stage Card -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
+        <!-- Status Bar -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+                <span id="camera-status-indicator" class="w-3 h-3 rounded-full bg-slate-300"></span>
+                <span id="camera-status-text" class="text-xs font-bold text-slate-600">Camera Idle — Ready to Connect</span>
+            </div>
+            <!-- Camera selection dropdown (shown when devices enumerated) -->
+            <div id="camera-select-wrapper" class="hidden flex items-center gap-2 text-xs">
+                <label for="camera-select" class="text-slate-500 font-medium">Device:</label>
+                <select id="camera-select" class="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-emerald-500 text-slate-700 max-w-[200px] truncate">
+                </select>
+            </div>
+        </div>
+
+        <!-- 1. Idle Initial State -->
+        <div id="camera-idle-view" class="text-center py-10 px-4 bg-slate-50/70 rounded-xl border-2 border-dashed border-slate-200 space-y-4">
+            <div class="w-16 h-16 mx-auto rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-2xl shadow-sm">
+                <i class="fa-solid fa-camera"></i>
+            </div>
+            <div class="max-w-md mx-auto">
+                <h3 class="text-base font-bold text-slate-800">Ready to Capture Waste Item</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Click <strong>Open Camera</strong> below to request camera permission and initiate a real-time capture session. Point your camera at a piece of waste (plastic bottle, paper, cardboard, metal can, glass, or trash) to classify it.
+                </p>
+            </div>
+            <div>
+                <button type="button" id="btn-open-camera" onclick="openCamera()" class="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition transform active:scale-95">
+                    <i class="fa-solid fa-camera"></i> Open Camera
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. Active Live Video Feed View -->
+        <div id="camera-feed-view" class="hidden space-y-4">
+            <div class="relative bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center">
+                <!-- Video Element -->
+                <video id="camera-video" autoplay playsinline muted class="w-full max-h-[460px] object-cover bg-black"></video>
+
+                <!-- LIVE Indicator Overlay -->
+                <div class="absolute top-3 left-3 flex items-center gap-2 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-full border border-red-500/50">
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                    <span class="text-[11px] font-bold text-red-400 tracking-wider uppercase">Live Feed</span>
+                </div>
+
+                <!-- Viewfinder Crosshair Guide Overlay -->
+                <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div class="w-48 h-48 sm:w-64 sm:h-64 border-2 border-dashed border-emerald-400/70 rounded-2xl flex flex-col justify-between p-2">
+                        <div class="flex justify-between">
+                            <span class="w-4 h-4 border-t-2 border-l-2 border-emerald-400"></span>
+                            <span class="w-4 h-4 border-t-2 border-r-2 border-emerald-400"></span>
+                        </div>
+                        <p class="text-center text-[10px] text-emerald-200 bg-black/50 py-0.5 px-2 rounded-full mx-auto font-medium">
+                            Center waste item here
+                        </p>
+                        <div class="flex justify-between">
+                            <span class="w-4 h-4 border-b-2 border-l-2 border-emerald-400"></span>
+                            <span class="w-4 h-4 border-b-2 border-r-2 border-emerald-400"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Controls -->
+            <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button type="button" id="btn-capture-photo" onclick="captureLivePhoto()" class="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition transform active:scale-95">
+                    <i class="fa-solid fa-circle-dot"></i> Capture Photo
+                </button>
+                <button type="button" id="btn-close-camera" onclick="closeCamera()" class="inline-flex items-center gap-2 px-4 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-sm transition">
+                    <i class="fa-solid fa-xmark"></i> Close Camera
+                </button>
+            </div>
+        </div>
+
+        <!-- 3. Captured Photo Preview View -->
+        <div id="captured-preview-view" class="hidden space-y-4">
+            <div class="relative bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow flex items-center justify-center">
+                <!-- Preview Image -->
+                <img id="captured-image-preview" src="" alt="Live Captured Waste" class="w-full max-h-[460px] object-contain">
+
+                <!-- Capture Timestamp Badge -->
+                <div class="absolute bottom-3 left-3 bg-black/75 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-[11px] font-mono border border-slate-600 flex items-center gap-1.5">
+                    <i class="fa-solid fa-camera text-emerald-400"></i>
+                    <span id="capture-timestamp-label">Live Frame</span>
+                </div>
+            </div>
+
+            <!-- Preview Controls: Capture Again & Classify Waste -->
+            <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <button type="button" id="btn-capture-again" onclick="retakePhoto()" class="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-sm shadow-sm transition">
+                    <i class="fa-solid fa-arrow-rotate-left text-slate-500"></i> Capture Again
+                </button>
+                <button type="button" id="btn-classify-waste" onclick="classifyCapturedPhoto()" class="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-md transition transform active:scale-95">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Classify Waste
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. Error / Permission Denied Card -->
+        <div id="camera-error-view" class="hidden p-5 bg-rose-50 border border-rose-200 rounded-xl space-y-3">
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-rose-500 text-lg mt-0.5"></i>
+                <div class="space-y-1">
+                    <h4 id="camera-error-title" class="text-sm font-bold text-rose-900">Camera Access Notice</h4>
+                    <p id="camera-error-message" class="text-xs text-rose-700 leading-relaxed"></p>
+                </div>
+            </div>
+            <div class="pt-2 border-t border-rose-200/80 flex items-center justify-between flex-wrap gap-2 text-xs">
+                <span class="text-rose-600 font-medium">
+                    <i class="fa-solid fa-ban mr-1"></i> File uploads are disabled by strict protocol.
+                </span>
+                <button type="button" onclick="openCamera()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs shadow-sm transition">
+                    Try Opening Camera Again
+                </button>
+            </div>
+        </div>
+
+        <!-- Hidden canvas for capturing frame -->
+        <canvas id="capture-canvas" class="hidden"></canvas>
+    </div>
+
+    <!-- Classification & Digital Twin Integration Results -->
+    <div id="results-section" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+
+        <!-- Analyzing Loading State -->
+        <div id="analyzing-loader" class="text-center py-8 space-y-3">
+            <div class="inline-block animate-spin text-emerald-600 text-3xl">
+                <i class="fa-solid fa-circle-notch"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-800">Evaluating Waste Photo with MobileNetV2 CNN...</p>
+            <p class="text-xs text-slate-500">Processing captured frame dimensions, extracting tensor features, and mapping to campus waste stream.</p>
+        </div>
+
+        <!-- Prediction Details -->
+        <div id="prediction-content" class="hidden space-y-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">CNN Model Inference Result</span>
+                    <h2 id="pred-class-heading" class="text-2xl font-black capitalize text-slate-800 mt-0.5">--</h2>
+                    <p class="text-[11px] text-slate-400 font-mono mt-1" id="db-record-line">
+                        PostgreSQL Record: <span id="pred-db-uuid" class="text-emerald-700 font-semibold font-mono">--</span>
+                        <span id="pred-db-engine" class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-sans"></span>
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Confidence</span>
+                        <span id="pred-confidence-score" class="text-xl font-black text-emerald-600 font-mono">--%</span>
+                    </div>
+                    <span id="pred-review-badge" class="px-3 py-1 rounded-full text-xs font-bold"></span>
+                </div>
+            </div>
+
+            <!-- Two-column Layout: Guidance & Digital Twin Allocation -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- Column 1: Material & Recycling Guidance -->
+                <div class="space-y-4">
+                    <!-- Stream & Reward Info -->
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-600">Assigned Campus Stream</span>
+                            <span id="pred-stream-tag" class="px-2.5 py-0.5 rounded-lg text-xs font-bold text-white bg-blue-600">--</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
+                            <span class="text-slate-500">Potential EcoCoins Reward:</span>
+                            <span id="pred-ecocoin-reward" class="font-bold text-amber-600 text-sm">+0 EcoCoins</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs pt-1">
+                            <span class="text-slate-500">Simulated CO₂e Avoided:</span>
+                            <span id="pred-co2-saved" class="font-bold text-teal-600">0.0 kg</span>
+                        </div>
+                    </div>
+
+                    <!-- Disposal Guidance -->
+                    <div class="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-2">
+                        <h4 class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-recycle text-emerald-600"></i> Disposal Guidance
+                        </h4>
+                        <p id="pred-disposal-guideline" class="text-xs text-emerald-800 leading-relaxed font-medium">--</p>
+                    </div>
+
+                    <!-- Circular Recycling Pathway -->
+                    <div class="p-4 bg-blue-50/60 rounded-xl border border-blue-200 space-y-2">
+                        <h4 class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrow-progress text-blue-600"></i> Circular Processing Pathway
+                        </h4>
+                        <p id="pred-recycling-pathway" class="text-xs text-blue-800 leading-relaxed">--</p>
+                        <p id="pred-rationale-text" class="text-[11px] text-blue-600/80 italic mt-1"></p>
+                    </div>
+                </div>
+
+                <!-- Column 2: Digital Twin Allocation & Confirmation -->
+                <div class="space-y-4">
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-eco-600"></i> Digital Twin Segregation Allocation
+                        </h4>
+
+                        <!-- Campus Location Selector -->
+                        <div>
+                            <label for="location-select" class="block text-xs font-bold text-slate-700 mb-1">
+                                Campus Disposal Location:
+                            </label>
+                            <select id="location-select" onchange="updateTargetBinPreview()" class="w-full text-xs font-medium bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 text-slate-800">
+                                <option value="LIB">Central Library</option>
+                                <option value="CAF">Food Court / Cafeteria</option>
+                                <option value="ENG">Engineering Quad</option>
+                                <option value="STU">Student Activities Center</option>
+                            </select>
+                        </div>
+
+                        <!-- Target Virtual Bin Preview -->
+                        <div class="p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+                            <div>
+                                <span class="text-slate-400 block text-[10px] uppercase font-bold">Target Virtual Bin</span>
+                                <span id="target-bin-display" class="font-mono font-bold text-slate-800">BIN-LIB-DRY</span>
+                            </div>
+                            <span id="target-bin-stream-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800">
+                                Dry Recyclables
+                            </span>
+                        </div>
+
+                        <!-- Human-in-the-Loop Override / Verification -->
+                        <div>
+                            <label for="override-select" class="block text-xs font-bold text-slate-700 mb-1">
+                                Confirm or Manually Correct Category:
+                            </label>
+                            <select id="override-select" onchange="handleOverrideChange()" class="w-full text-xs font-medium bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-emerald-500">
+                                <option value="cardboard">Cardboard (Dry Recyclables)</option>
+                                <option value="glass">Glass (Glass & Metals)</option>
+                                <option value="metal">Metal (Glass & Metals)</option>
+                                <option value="paper">Paper (Dry Recyclables)</option>
+                                <option value="plastic">Plastic (Dry Recyclables)</option>
+                                <option value="trash">Residual Trash (General Waste)</option>
+                            </select>
+                            <p class="text-[10px] text-slate-400 mt-1">
+                                *If model confidence is under 65%, review and verify material to avoid contamination.
+                            </p>
+                        </div>
+
+                        <!-- Notice: Simulated Twin Data -->
+                        <div class="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-800">
+                            <strong>Simulated Twin Data:</strong> Confirming disposal updates virtual sensor telemetry, capacity fill percentage, and the student reward ledger in SQLite.
+                        </div>
+
+                        <!-- Submit Disposal Button -->
+                        <button type="button" id="btn-confirm-dispose" onclick="submitDisposal()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow transition flex items-center justify-center gap-2 transform active:scale-95">
+                            <i class="fa-solid fa-check-double"></i> Accept & Confirm Campus Disposal
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Class Confidence Distribution (6 CNN Classes) -->
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <span class="block text-xs font-bold text-slate-700">MobileNetV2 Softmax Class Distribution:</span>
+                <div id="prob-bars" class="space-y-1.5 text-xs"></div>
+            </div>
+        </div>
+
+        <!-- Disposal Accepted Success Confirmation Card -->
+        <div id="disposal-success-card" class="hidden p-6 bg-emerald-50 border border-emerald-300 rounded-xl space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-emerald-900">Disposal Confirmed & Telemetry Synchronized!</h3>
+                    <p class="text-xs text-emerald-700 mt-0.5">The EcoTwin digital twin database has been successfully updated with this event.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-emerald-200 text-xs">
+                <div>
+                    <span class="block text-slate-400 text-[10px] uppercase font-bold">Allocated Bin</span>
+                    <span id="succ-bin-id" class="font-mono font-bold text-slate-800">--</span>
+                </div>
+                <div>
+                    <span class="block text-slate-400 text-[10px] uppercase font-bold">New Fill Level</span>
+                    <span id="succ-fill-level" class="font-bold text-slate-800">--%</span>
+                </div>
+                <div>
+                    <span class="block text-slate-400 text-[10px] uppercase font-bold">EcoCoins Earned</span>
+                    <span id="succ-coins" class="font-bold text-amber-600">+0 Coins</span>
+                </div>
+                <div>
+                    <span class="block text-slate-400 text-[10px] uppercase font-bold">CO₂e Avoided</span>
+                    <span id="succ-co2" class="font-bold text-teal-600">0.0 kg</span>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <button type="button" onclick="startNewCaptureSession()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-camera"></i> Capture Another Item
+                </button>
+                <a href="/" class="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold rounded-lg text-xs transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-chart-pie"></i> View Live Dashboard
+                </a>
+            </div>
+        </div>
+
+    </div>
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// State management
+let currentStream = null;
+let capturedBlob = null;
 let currentPrediction = null;
-let currentImageData = null;
+let selectedDeviceId = null;
 
-const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('image-input');
-const previewSection = document.getElementById('preview-section');
-const imagePreview = document.getElementById('image-preview');
+// DOM Elements
+const cameraIdleView = document.getElementById('camera-idle-view');
+const cameraFeedView = document.getElementById('camera-feed-view');
+const capturedPreviewView = document.getElementById('captured-preview-view');
+const cameraErrorView = document.getElementById('camera-error-view');
+const cameraVideo = document.getElementById('camera-video');
+const captureCanvas = document.getElementById('capture-canvas');
+const capturedImagePreview = document.getElementById('captured-image-preview');
+const cameraStatusIndicator = document.getElementById('camera-status-indicator');
+const cameraStatusText = document.getElementById('camera-status-text');
+const cameraSelectWrapper = document.getElementById('camera-select-wrapper');
+const cameraSelect = document.getElementById('camera-select');
+const captureTimestampLabel = document.getElementById('capture-timestamp-label');
 
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-emerald-500'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-emerald-500'));
-dropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.classList.remove('border-emerald-500');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        handleFile(e.dataTransfer.files[0]);
+const resultsSection = document.getElementById('results-section');
+const analyzingLoader = document.getElementById('analyzing-loader');
+const predictionContent = document.getElementById('prediction-content');
+const disposalSuccessCard = document.getElementById('disposal-success-card');
+
+// Clean up camera stream on window unload or navigation
+window.addEventListener('beforeunload', stopCameraStream);
+window.addEventListener('pagehide', stopCameraStream);
+
+function setCameraStatus(state, message) {
+    cameraStatusText.innerText = message;
+    cameraStatusIndicator.className = 'w-3 h-3 rounded-full ';
+    if (state === 'active') {
+        cameraStatusIndicator.className += 'bg-red-500 animate-pulse';
+    } else if (state === 'ready') {
+        cameraStatusIndicator.className += 'bg-blue-500';
+    } else if (state === 'success') {
+        cameraStatusIndicator.className += 'bg-emerald-500';
+    } else if (state === 'error') {
+        cameraStatusIndicator.className += 'bg-rose-500';
+    } else {
+        cameraStatusIndicator.className += 'bg-slate-300';
     }
-});
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-        handleFile(e.target.files[0]);
-    }
-});
-
-function handleFile(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        imagePreview.src = e.target.result;
-        previewSection.classList.remove('hidden');
-        classifyImage(file);
-    };
-    reader.readAsDataURL(file);
 }
 
-async function loadSample(sampleClass) {
+function showCameraError(title, message) {
+    document.getElementById('camera-error-title').innerText = title;
+    document.getElementById('camera-error-message').innerText = message;
+    cameraErrorView.classList.remove('hidden');
+    cameraFeedView.classList.add('hidden');
+    cameraIdleView.classList.remove('hidden');
+    setCameraStatus('error', 'Camera Error: ' + title);
+}
+
+function stopCameraStream() {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => {
+            try { track.stop(); } catch (e) {}
+        });
+        currentStream = null;
+    }
+    if (cameraVideo) {
+        cameraVideo.srcObject = null;
+    }
+}
+
+async function enumerateCameras() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
-        const resp = await fetch(`/api/sample_image?class=${sampleClass}`);
-        const data = await resp.json();
-        if (data.success) {
-            imagePreview.src = data.image_url;
-            previewSection.classList.remove('hidden');
-            // Classify sample by image path
-            classifySamplePath(data.image_path);
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        if (videoDevices.length > 1) {
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach((dev, idx) => {
+                const opt = document.createElement('option');
+                opt.value = dev.deviceId;
+                opt.text = dev.label || `Camera ${idx + 1}`;
+                if (dev.deviceId === selectedDeviceId) opt.selected = true;
+                cameraSelect.appendChild(opt);
+            });
+            cameraSelectWrapper.classList.remove('hidden');
+            cameraSelect.onchange = () => {
+                selectedDeviceId = cameraSelect.value;
+                openCamera();
+            };
         } else {
-            alert('Could not fetch sample: ' + data.error);
+            cameraSelectWrapper.classList.add('hidden');
         }
     } catch (e) {
-        alert('Error loading sample: ' + e);
+        console.warn('Unable to enumerate cameras:', e);
     }
 }
 
-async function classifyImage(file) {
-    setAnalyzing();
+async function openCamera() {
+    // Check browser compatibility and security context
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCameraError(
+            'Camera API Not Supported',
+            'Your browser does not support native camera media devices, or camera access is blocked because this page is not running in a secure origin (HTTPS or http://localhost).'
+        );
+        return;
+    }
+
+    setCameraStatus('ready', 'Requesting camera permission...');
+    cameraErrorView.classList.add('hidden');
+
+    // Build video constraints: prefer rear/environment camera on mobile
+    const constraints = {
+        video: selectedDeviceId 
+            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+    };
+
+    stopCameraStream();
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        currentStream = stream;
+        cameraVideo.srcObject = stream;
+        await cameraVideo.play();
+
+        // Update UI
+        cameraIdleView.classList.add('hidden');
+        capturedPreviewView.classList.add('hidden');
+        cameraFeedView.classList.remove('hidden');
+        setCameraStatus('active', '🔴 Live Camera Active');
+
+        // Enumerate devices once stream granted (labels become accessible)
+        await enumerateCameras();
+    } catch (err) {
+        stopCameraStream();
+        let title = 'Camera Access Failed';
+        let detail = err.message || 'Unknown camera error.';
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            title = 'Camera Permission Denied';
+            detail = 'Camera permission was dismissed or blocked. Please click the camera/padlock icon in your browser address bar, grant camera access, and try again.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            title = 'No Camera Hardware Found';
+            detail = 'No video capture device was detected on this system. Please connect a webcam or enable your built-in camera.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            title = 'Camera Hardware In Use';
+            detail = 'Your camera device is currently in use by another application (e.g. Teams, Zoom, or another browser tab). Please close other apps using the camera.';
+        } else if (err.name === 'OverconstrainedError') {
+            title = 'Camera Constraint Error';
+            detail = 'Requested video resolution could not be satisfied. Retrying with default resolution...';
+            // Retry with bare minimum constraint
+            try {
+                const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                currentStream = fallbackStream;
+                cameraVideo.srcObject = fallbackStream;
+                await cameraVideo.play();
+                cameraIdleView.classList.add('hidden');
+                cameraFeedView.classList.remove('hidden');
+                setCameraStatus('active', '🔴 Live Camera Active');
+                return;
+            } catch (e2) {
+                detail = e2.message;
+            }
+        }
+        showCameraError(title, detail);
+    }
+}
+
+function closeCamera() {
+    stopCameraStream();
+    cameraFeedView.classList.add('hidden');
+    cameraIdleView.classList.remove('hidden');
+    setCameraStatus('idle', 'Camera Idle — Ready to Connect');
+}
+
+function captureLivePhoto() {
+    if (!currentStream || !cameraVideo.videoWidth) {
+        alert('Live camera stream is not ready. Please wait a moment.');
+        return;
+    }
+
+    // Set canvas dimensions to exact video frame size
+    captureCanvas.width = cameraVideo.videoWidth;
+    captureCanvas.height = cameraVideo.videoHeight;
+    const ctx = captureCanvas.getContext('2d');
+    ctx.drawImage(cameraVideo, 0, 0, captureCanvas.width, captureCanvas.height);
+
+    // Convert to image Blob
+    captureCanvas.toBlob((blob) => {
+        if (!blob) {
+            alert('Failed to extract image frame from camera.');
+            return;
+        }
+        capturedBlob = blob;
+        const capturedUrl = URL.createObjectURL(blob);
+        capturedImagePreview.src = capturedUrl;
+
+        const timeStr = new Date().toLocaleTimeString();
+        captureTimestampLabel.innerText = `Captured: ${timeStr} (${captureCanvas.width}x${captureCanvas.height})`;
+
+        // Stop live stream once photo is captured
+        stopCameraStream();
+
+        // Switch to preview view
+        cameraFeedView.classList.add('hidden');
+        capturedPreviewView.classList.remove('hidden');
+        setCameraStatus('ready', 'Live Photo Captured — Ready to Classify');
+
+        // Scroll to preview
+        capturedPreviewView.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 'image/jpeg', 0.92);
+}
+
+function retakePhoto() {
+    capturedBlob = null;
+    resultsSection.classList.add('hidden');
+    capturedPreviewView.classList.add('hidden');
+    openCamera();
+}
+
+async function classifyCapturedPhoto() {
+    if (!capturedBlob) {
+        alert('No captured photo available. Please capture a photo with your camera first.');
+        return;
+    }
+
+    // Show results section with loading state
+    resultsSection.classList.remove('hidden');
+    analyzingLoader.classList.remove('hidden');
+    predictionContent.classList.add('hidden');
+    disposalSuccessCard.classList.add('hidden');
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setCameraStatus('ready', 'Classifying live captured frame...');
+
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('live_frame', capturedBlob, 'live_camera_capture.jpg');
+    formData.append('capture_source', 'live_camera');
+    formData.append('capture_timestamp', new Date().toISOString());
+
     try {
         const resp = await fetch('/api/classify', {
             method: 'POST',
+            headers: {
+                'X-Capture-Source': 'live_camera'
+            },
             body: formData
         });
+
         const result = await resp.json();
-        displayPrediction(result);
-    } catch (e) {
-        alert('Classification failed: ' + e);
+        analyzingLoader.classList.add('hidden');
+
+        if (!result.success) {
+            alert('Classification error: ' + (result.error || 'Unknown error'));
+            resultsSection.classList.add('hidden');
+            return;
+        }
+
+        displayClassificationResult(result.data);
+    } catch (err) {
+        analyzingLoader.classList.add('hidden');
+        alert('Network or server error during classification: ' + err);
+        resultsSection.classList.add('hidden');
     }
 }
 
-async function classifySamplePath(imagePath) {
-    setAnalyzing();
-    try {
-        const resp = await fetch('/api/classify_sample', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({image_path: imagePath})
-        });
-        const result = await resp.json();
-        displayPrediction(result);
-    } catch (e) {
-        alert('Classification failed: ' + e);
+function displayClassificationResult(data) {
+    currentPrediction = data;
+    predictionContent.classList.remove('hidden');
+    setCameraStatus('success', `Classified: ${data.predicted_class.toUpperCase()} (${data.confidence_pct}%)`);
+
+    // Headings
+    document.getElementById('pred-class-heading').innerText = data.predicted_class;
+    document.getElementById('pred-confidence-score').innerText = data.confidence_pct + '%';
+
+    // PostgreSQL Record ID
+    if (data.classification_id) {
+        document.getElementById('pred-db-uuid').innerText = data.classification_id;
+        if (data.database_status && data.database_status.engine) {
+            document.getElementById('pred-db-engine').innerText = data.database_status.engine;
+        }
     }
-}
 
-function setAnalyzing() {
-    document.getElementById('pred-class-name').innerText = "Running CNN...";
-    document.getElementById('pred-conf-score').innerText = "--%";
-    document.getElementById('review-badge').innerText = "Processing";
-    document.getElementById('review-badge').className = "px-2 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-700";
-}
-
-function displayPrediction(res) {
-    if (!res.success) {
-        alert("Inference error: " + res.error);
-        return;
-    }
-    currentPrediction = res.data;
-
-    document.getElementById('pred-class-name').innerText = currentPrediction.predicted_class;
-    document.getElementById('pred-conf-score').innerText = currentPrediction.confidence_pct + '%';
-    document.getElementById('pred-rationale').innerText = currentPrediction.rationale;
-    document.getElementById('pred-stream-name').innerText = currentPrediction.stream_name;
-    document.getElementById('pred-reward').innerText = '+' + currentPrediction.potential_ecocoins + ' EcoCoins';
-
-    const badge = document.getElementById('review-badge');
-    if (currentPrediction.needs_manual_review) {
-        badge.innerText = "Needs manual review";
-        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300";
+    // Review badge
+    const badge = document.getElementById('pred-review-badge');
+    if (data.needs_manual_review) {
+        badge.innerText = 'Needs Manual Review';
+        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300';
     } else {
-        badge.innerText = "High Confidence";
-        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
+        badge.innerText = 'High Confidence';
+        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300';
     }
 
-    // Set default in override select
-    document.getElementById('override-select').value = currentPrediction.predicted_class;
+    // Guidance and Stream
+    const streamTag = document.getElementById('pred-stream-tag');
+    streamTag.innerText = data.stream_name;
+    if (data.stream_id === 'dry_recyclable') {
+        streamTag.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold text-white bg-blue-600';
+    } else if (data.stream_id === 'glass_metal') {
+        streamTag.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold text-white bg-emerald-600';
+    } else {
+        streamTag.className = 'px-2.5 py-0.5 rounded-lg text-xs font-bold text-white bg-slate-600';
+    }
 
-    // Render probability distribution bars
+    document.getElementById('pred-ecocoin-reward').innerText = `+${data.potential_ecocoins} EcoCoins`;
+    document.getElementById('pred-co2-saved').innerText = `${data.estimated_co2_kg} kg CO₂e`;
+    document.getElementById('pred-disposal-guideline').innerText = data.disposal_guidance;
+    document.getElementById('pred-recycling-pathway').innerText = data.recycling_pathway;
+    document.getElementById('pred-rationale-text').innerText = data.rationale ? `Rationale: ${data.rationale}` : '';
+
+    // Set override select default
+    document.getElementById('override-select').value = data.predicted_class;
+    updateTargetBinPreview();
+
+    // Render probability distribution
     const probContainer = document.getElementById('prob-bars');
     probContainer.innerHTML = '';
-    for (const [cls, prob] of Object.entries(currentPrediction.probabilities)) {
+    for (const [cls, prob] of Object.entries(data.probabilities)) {
         const pct = (prob * 100).toFixed(1);
+        const isPredicted = (cls === data.predicted_class);
         const row = document.createElement('div');
         row.innerHTML = `
-            <div class="flex justify-between text-slate-600 mb-0.5 font-medium">
-                <span class="capitalize">${cls}</span>
+            <div class="flex justify-between text-slate-700 mb-0.5 font-medium ${isPredicted ? 'font-bold text-emerald-800' : ''}">
+                <span class="capitalize">${cls} ${isPredicted ? '★ (Predicted)' : ''}</span>
                 <span>${pct}%</span>
             </div>
-            <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                <div class="bg-emerald-500 h-1.5 rounded-full" style="width: ${pct}%"></div>
+            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                <div class="${isPredicted ? 'bg-emerald-600' : 'bg-slate-400'} h-2 rounded-full transition-all duration-300" style="width: ${pct}%"></div>
             </div>
         `;
         probContainer.appendChild(row);
     }
 }
 
+function handleOverrideChange() {
+    updateTargetBinPreview();
+}
+
+function updateTargetBinPreview() {
+    const loc = document.getElementById('location-select').value;
+    const acceptedClass = document.getElementById('override-select').value;
+
+    let streamCode = 'RESIDUAL';
+    let streamLabel = 'Residual Waste';
+    let badgeClass = 'bg-slate-100 text-slate-800';
+
+    if (['cardboard', 'paper', 'plastic'].includes(acceptedClass)) {
+        streamCode = 'DRY_RECYCLABLE';
+        streamLabel = 'Dry Recyclables';
+        badgeClass = 'bg-blue-100 text-blue-800';
+    } else if (['glass', 'metal'].includes(acceptedClass)) {
+        streamCode = 'GLASS_METAL';
+        streamLabel = 'Glass & Metals';
+        badgeClass = 'bg-emerald-100 text-emerald-800';
+    }
+
+    const binId = `BIN-${loc}-${streamCode}`;
+    document.getElementById('target-bin-display').innerText = binId;
+    const badge = document.getElementById('target-bin-stream-badge');
+    badge.innerText = streamLabel;
+    badge.className = `px-2 py-0.5 rounded text-[11px] font-bold ${badgeClass}`;
+}
+
 async function submitDisposal() {
     if (!currentPrediction) {
-        alert("Please classify an item first.");
+        alert('Please classify an item first.');
         return;
     }
 
@@ -277,13 +716,17 @@ async function submitDisposal() {
     const locationId = document.getElementById('location-select').value;
     const wasOverridden = (acceptedClass !== currentPrediction.predicted_class);
 
-    // Generate unique UUID to guarantee idempotency and prevent double credits
+    // Guaranteed idempotent event UUID
     const eventUuid = 'evt-' + Math.random().toString(36).substring(2, 12) + '-' + Date.now();
+
+    const submitBtn = document.getElementById('btn-confirm-dispose');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Synchronizing Digital Twin...';
 
     try {
         const resp = await fetch('/api/dispose', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 event_uuid: eventUuid,
                 student_id: 'student_101',
@@ -291,20 +734,50 @@ async function submitDisposal() {
                 confidence: currentPrediction.confidence,
                 accepted_class: acceptedClass,
                 location_id: locationId,
-                was_overridden: wasOverridden
+                was_overridden: wasOverridden,
+                image_name: 'live_camera_capture.jpg'
             })
         });
 
         const res = await resp.json();
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Accept & Confirm Campus Disposal';
+
         if (res.success) {
-            alert(`🎉 Disposal Accepted!\n\nTarget Bin: ${res.data.bin_id} (${res.data.bin_location})\nFill Level: ${res.data.new_fill_percent}%\nEcoCoins Awarded: +${res.data.ecocoins_awarded}\nEstimated CO2 Avoided: ${res.data.co2_saved_kg} kg`);
-            window.location.href = '/';
+            // Update Student Coins in navbar if present
+            const navCoins = document.getElementById('nav-student-coins');
+            if (navCoins && res.data.ecocoins_awarded !== undefined) {
+                const currentCoins = parseInt(navCoins.innerText) || 0;
+                navCoins.innerText = (currentCoins + res.data.ecocoins_awarded) + ' EcoCoins';
+            }
+
+            // Show success confirmation
+            document.getElementById('succ-bin-id').innerText = res.data.bin_id;
+            document.getElementById('succ-fill-level').innerText = res.data.new_fill_percent + '%';
+            document.getElementById('succ-coins').innerText = `+${res.data.ecocoins_awarded} Coins`;
+            document.getElementById('succ-co2').innerText = `${res.data.co2_saved_kg} kg`;
+
+            predictionContent.classList.add('hidden');
+            disposalSuccessCard.classList.remove('hidden');
+            disposalSuccessCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setCameraStatus('success', 'Disposal Recorded & Twin Telemetry Synchronized');
         } else {
-            alert("Disposal failed: " + res.error);
+            alert('Disposal failed: ' + res.error);
         }
-    } catch (e) {
-        alert("Network error: " + e);
+    } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-check-double"></i> Accept & Confirm Campus Disposal';
+        alert('Network error submitting disposal: ' + err);
     }
+}
+
+function startNewCaptureSession() {
+    currentPrediction = null;
+    capturedBlob = null;
+    disposalSuccessCard.classList.add('hidden');
+    resultsSection.classList.add('hidden');
+    capturedPreviewView.classList.add('hidden');
+    openCamera();
 }
 </script>
 {% endblock %}

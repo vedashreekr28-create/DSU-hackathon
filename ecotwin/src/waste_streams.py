@@ -41,6 +41,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.15,
         "co2e_factor_kg_per_kg": 0.95,  # ~0.95 kg CO2e avoided per kg recycled cardboard
         "rationale": "High-value pulp fibers; saves trees and reduces landfill methane.",
+        "pathway": "Mechanical Repulping & Secondary Corrugated Packaging Production",
+        "disposal_guidance": "Recyclable (Dry Waste). Flatten boxes to minimize volume in the Blue Dry Recyclables bin. Keep clean and dry.",
     },
     "paper": {
         "stream_id": "dry_recyclable",
@@ -50,6 +52,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.05,
         "co2e_factor_kg_per_kg": 1.10,  # ~1.10 kg CO2e avoided per kg clean paper
         "rationale": "Readily repulpable; saves water, bleaching chemicals, and energy.",
+        "pathway": "De-inking & Paper Mill Fiber Reclamation",
+        "disposal_guidance": "Recyclable (Dry Waste). Dispose in Blue Dry Recyclables bin. Keep clean and dry. Avoid greasy or food-soiled paper.",
     },
     "plastic": {
         "stream_id": "dry_recyclable",
@@ -59,6 +63,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.04,
         "co2e_factor_kg_per_kg": 1.45,  # ~1.45 kg CO2e avoided per kg virgin plastic displaced
         "rationale": "Displaces fossil petrochemical feedstock; prevents marine microplastic pollution.",
+        "pathway": "Flake Shredding, Hot Washing & Polymer Pelletizing (PET/HDPE)",
+        "disposal_guidance": "Recyclable (Dry Waste). Empty and rinse bottles/containers, replace cap, and place in Blue Dry Recyclables bin.",
     },
     "metal": {
         "stream_id": "glass_metal",
@@ -68,6 +74,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.08,
         "co2e_factor_kg_per_kg": 2.20,  # ~2.20 kg CO2e avoided per kg recycled aluminium/steel
         "rationale": "Remelting aluminium uses 95% less energy than primary bauxite smelting.",
+        "pathway": "Scrap Shredding & Secondary Electric Arc Smelting",
+        "disposal_guidance": "Recyclable (Glass & Metals). Empty and rinse beverage/food cans. Dispose in Green Glass & Metals bin.",
     },
     "glass": {
         "stream_id": "glass_metal",
@@ -77,6 +85,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.25,
         "co2e_factor_kg_per_kg": 0.31,  # ~0.31 kg CO2e avoided per kg recycled cullet
         "rationale": "100% recyclable infinitely without degradation of purity or strength.",
+        "pathway": "Color Optical Sorting, Cullet Crushing & 100% Circular Remelting",
+        "disposal_guidance": "Recyclable (Glass & Metals). Rinse jars and bottles clean. Deposit carefully into Green Glass & Metals bin. Avoid breaking.",
     },
     "trash": {
         "stream_id": "residual",
@@ -86,6 +96,8 @@ CLASS_TO_STREAM_MAPPING = {
         "est_weight_kg": 0.10,
         "co2e_factor_kg_per_kg": 0.0,
         "rationale": "Residual general waste; not eligible for circular recycling credits or EcoCoins.",
+        "pathway": "Sanitary Landfill Isolation / Municipal Non-Recyclable Incineration",
+        "disposal_guidance": "Residual General Waste. Dispose in Gray Residual bin. Not recyclable or compostable in campus stream.",
     },
 }
 
