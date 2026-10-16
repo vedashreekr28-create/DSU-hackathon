@@ -2,7 +2,31 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api/index"
+    },
+    {
+      "source": "/classify",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/simulator",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/simu",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/c-twin",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/ctwin",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
     }
   ]
 }
