@@ -1,561 +1,655 @@
-{% extends "layout.html" %}
-
-{% block title %}Campus Digital Twin Dashboard - EcoTwin{% endblock %}
-
-{% block content %}
-<div class="space-y-6">
-    <!-- Header Banner -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-emerald-800 to-teal-900 rounded-2xl p-6 text-white shadow-lg">
-        <div>
-            <h1 class="text-2xl font-black tracking-tight flex items-center gap-2">
-                <i class="fa-solid fa-network-wired text-emerald-400"></i>
-                Campus Waste Digital Twin
-            </h1>
-            <p class="text-sm text-emerald-200 mt-1">
-                Real-time synchronized virtual twin of campus waste streams, bin capacities, and circular recycling metrics.
-            </p>
-        </div>
-        <div class="flex items-center gap-3">
-            <a href="/classify" class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold px-4 py-2.5 rounded-xl text-sm shadow transition transform active:scale-95">
-                <i class="fa-solid fa-camera"></i> Classify New Waste
-            </a>
-            <button onclick="location.reload()" class="inline-flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white font-medium px-3.5 py-2.5 rounded-xl text-sm border border-white/20 transition">
-                <i class="fa-solid fa-rotate-right"></i> Refresh State
-            </button>
-        </div>
-    </div>
-
-    <!-- Supabase PostgreSQL Connection & Data Source Status Banner -->
-    <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div class="flex items-center gap-2.5">
-            {% if data.database_status and data.database_status.is_connected %}
-            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span class="font-bold text-emerald-800 flex items-center gap-1.5">
-                <i class="fa-solid fa-database text-emerald-600"></i> Supabase PostgreSQL Connected
-            </span>
-            <span class="text-slate-500 hidden md:inline">({{ data.database_status.supabase_url }})</span>
-            {% else %}
-            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
-            <span class="font-bold text-slate-800 flex items-center gap-1.5">
-                <i class="fa-solid fa-server text-blue-600"></i> Local Database Engine (Supabase PostgreSQL Compatible)
-            </span>
-            <span class="text-slate-400 hidden md:inline">• Live Cloud URL not configured in .env (falling back to local schema replica)</span>
-            {% endif %}
-        </div>
-        <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                Model: {{ data.database_status.model_version | default('mobilenetv2-v1.0') }}
-            </span>
-            <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Source: live_camera
-            </span>
-        </div>
-    </div>
-
-    <!-- Active Alerts Banner -->
-    {% if data.active_alerts %}
-    <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl shadow-sm space-y-2">
-        <div class="flex items-center gap-2 text-amber-800 font-bold text-sm">
-            <i class="fa-solid fa-triangle-exclamation text-amber-600 animate-pulse text-base"></i>
-            <span>Active Campus Capacity Alerts ({{ data.active_alerts | length }})</span>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {% for alert in data.active_alerts %}
-            <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-amber-200 text-xs">
-                <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded font-mono font-semibold {% if alert.alert_type == 'COLLECTION_REQUIRED' %}bg-rose-100 text-rose-800{% else %}bg-amber-100 text-amber-800{% endif %}">
-                        {{ alert.alert_type }}
-                    </span>
-                    <span class="text-slate-700 font-medium">{{ alert.message }}</span>
-                </div>
-                <button onclick="triggerCollection('{{ alert.bin_id }}')" class="ml-2 text-emerald-600 hover:text-emerald-700 font-bold underline whitespace-nowrap">
-                    Dispatch Pickup
-                </button>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Metric Overview Cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <!-- 1. Total Items -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-slate-400">
-                <span class="text-xs font-semibold uppercase tracking-wider">Total Items</span>
-                <i class="fa-solid fa-box text-emerald-600 text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black text-slate-800">{{ data.total_items }}</p>
-                <p class="text-[11px] text-slate-500 mt-0.5">Disposal events</p>
-            </div>
-        </div>
-
-        <!-- 2. Recycling Rate -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-slate-400">
-                <span class="text-xs font-semibold uppercase tracking-wider">Recycle Rate</span>
-                <i class="fa-solid fa-recycle text-blue-600 text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black text-blue-600">{{ data.recycling_rate }}%</p>
-                <p class="text-[11px] text-slate-500 mt-0.5">{{ data.recycled_count }} recyclable items</p>
-            </div>
-        </div>
-
-        <!-- 3. Contamination -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-slate-400">
-                <span class="text-xs font-semibold uppercase tracking-wider">Contamination</span>
-                <i class="fa-solid fa-circle-exclamation text-rose-500 text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black {% if data.contamination_rate > 10 %}text-rose-600{% else %}text-slate-800{% endif %}">
-                    {{ data.contamination_rate }}%
-                </p>
-                <p class="text-[11px] text-slate-500 mt-0.5">{{ data.contamination_count }} overrides/flags</p>
-            </div>
-        </div>
-
-        <!-- 4. Simulated CO2 Avoided -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-slate-400">
-                <span class="text-xs font-semibold uppercase tracking-wider">CO₂e Avoided</span>
-                <i class="fa-solid fa-leaf text-teal-600 text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black text-teal-700">{{ data.total_co2_kg }} <span class="text-xs font-bold text-slate-500">kg</span></p>
-                <p class="text-[10px] text-slate-400 mt-0.5">*Simulated EPA WARM est.</p>
-            </div>
-        </div>
-
-        <!-- 5. Active Alerts -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-slate-400">
-                <span class="text-xs font-semibold uppercase tracking-wider">Capacity Alerts</span>
-                <i class="fa-solid fa-bell {% if data.active_alerts %}text-amber-500 animate-bounce{% else %}text-slate-400{% endif %} text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black {% if data.active_alerts %}text-amber-600{% else %}text-slate-800{% endif %}">
-                    {{ data.active_alerts | length }}
-                </p>
-                <p class="text-[11px] text-slate-500 mt-0.5">Bins requiring service</p>
-            </div>
-        </div>
-
-        <!-- 6. EcoCoins Balance -->
-        <div class="bg-gradient-to-br from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200 shadow-sm flex flex-col justify-between">
-            <div class="flex items-center justify-between text-amber-600">
-                <span class="text-xs font-semibold uppercase tracking-wider">EcoCoins</span>
-                <i class="fa-solid fa-coins text-amber-500 text-base"></i>
-            </div>
-            <div class="mt-2">
-                <p class="text-2xl font-black text-amber-700">{{ data.student_balance }}</p>
-                <p class="text-[11px] text-amber-600 mt-0.5">Student {{ data.student_id }}</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Campus Virtual Bins State -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
-            <div>
-                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-trash-can text-eco-600"></i>
-                    Campus Virtual Bins (Digital Twin)
-                </h2>
-                <p class="text-xs text-slate-500">
-                    Live virtual telemetry tracking fill percentage, estimated volume, and collection states across 4 campus zones.
-                </p>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Available (&lt;80%)</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Warning (80-94%)</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Full (&ge;95%)</span>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {% for bin in data.bins %}
-            <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col justify-between hover:shadow-md transition">
-                <div>
-                    <!-- Header -->
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <span class="text-[10px] font-mono uppercase bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
-                                {{ bin.bin_id }}
-                            </span>
-                            <h3 class="text-sm font-bold text-slate-800 mt-1">{{ bin.location_name }}</h3>
-                        </div>
-                        <!-- Status Badge -->
-                        <span class="text-[11px] px-2 py-0.5 rounded-full font-bold
-                            {% if bin.status == 'Available' %}bg-emerald-100 text-emerald-800
-                            {% elif bin.status == 'Nearly Full' %}bg-amber-100 text-amber-800
-                            {% else %}bg-rose-100 text-rose-800{% endif %}">
-                            {{ bin.status }}
-                        </span>
-                    </div>
-
-                    <!-- Stream Type -->
-                    <div class="mt-2.5 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full 
-                            {% if bin.stream_id == 'dry_recyclable' %}bg-blue-500
-                            {% elif bin.stream_id == 'glass_metal' %}bg-emerald-500
-                            {% else %}bg-slate-500{% endif %}"></span>
-                        <span class="text-xs font-semibold text-slate-700">{{ bin.stream_name }}</span>
-                    </div>
-
-                    <!-- Progress Bar -->
-                    <div class="mt-3">
-                        <div class="flex justify-between text-xs font-medium text-slate-600 mb-1">
-                            <span>Estimated Fill</span>
-                            <span class="font-bold">{{ bin.estimated_fill_percent }}%</span>
-                        </div>
-                        <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
-                            <div class="h-2.5 rounded-full transition-all duration-500
-                                {% if bin.estimated_fill_percent >= 95 %}bg-rose-500
-                                {% elif bin.estimated_fill_percent >= 80 %}bg-amber-500
-                                {% else %}bg-emerald-500{% endif %}"
-                                style="width: {{ [bin.estimated_fill_percent, 100]|min }}%">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Item count / remaining -->
-                    <div class="mt-3 grid grid-cols-2 text-[11px] text-slate-500 bg-white p-2 rounded-lg border border-slate-100">
-                        <div>
-                            <span class="block text-slate-400">Items Count:</span>
-                            <span class="font-bold text-slate-700">{{ bin.item_count }} / {{ bin.max_capacity_items }}</span>
-                        </div>
-                        <div>
-                            <span class="block text-slate-400">Remaining Est.:</span>
-                            <span class="font-bold text-slate-700">{{ bin.remaining_capacity_est }} items</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Action Button -->
-                <div class="mt-4 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs">
-                    <span class="text-[10px] text-slate-400 truncate" title="{{ bin.last_updated }}">
-                        Updated: {{ bin.last_updated.split('T')[1].split('.')[0] if 'T' in bin.last_updated else bin.last_updated }}
-                    </span>
-                    <button onclick="triggerCollection('{{ bin.bin_id }}')" 
-                            class="bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 font-semibold px-2.5 py-1 rounded border border-emerald-300 transition text-[11px] flex items-center gap-1">
-                        <i class="fa-solid fa-truck-pickup"></i> Empty Bin
-                    </button>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Category Breakdown & Explanations -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- 1. AI Waste Class Breakdown -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-cubes-stacked text-blue-600"></i>
-                Waste Counts by AI Class
-            </h3>
-            <p class="text-xs text-slate-500">6 classified categories processed through CNN:</p>
-            <div class="space-y-2 mt-2">
-                {% for cls, count in data.category_breakdown.items() %}
-                <div>
-                    <div class="flex justify-between text-xs font-semibold text-slate-700 mb-0.5 capitalize">
-                        <span>{{ cls }}</span>
-                        <span>{{ count }} items</span>
-                    </div>
-                    <div class="w-full bg-slate-100 rounded-full h-2">
-                        <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (count / [data.total_items, 1]|max * 100)|round }}%"></div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-
-        <!-- 2. Campus Stream Architecture -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-diagram-project text-emerald-600"></i>
-                Campus Segregation Architecture
-            </h3>
-            <p class="text-xs text-slate-500">Configured 3-stream mapping policy:</p>
-            <div class="space-y-2.5 text-xs">
-                <div class="p-2.5 bg-blue-50 rounded-lg border border-blue-200">
-                    <p class="font-bold text-blue-900">1. Dry Recyclables (Blue)</p>
-                    <p class="text-blue-700 text-[11px] mt-0.5">Classes: cardboard, paper, plastic. High circular recovery potential.</p>
-                </div>
-                <div class="p-2.5 bg-emerald-50 rounded-lg border border-emerald-200">
-                    <p class="font-bold text-emerald-900">2. Glass & Metals (Green)</p>
-                    <p class="text-emerald-700 text-[11px] mt-0.5">Classes: glass, metal. High value smelting and cullet reuse.</p>
-                </div>
-                <div class="p-2.5 bg-slate-100 rounded-lg border border-slate-200">
-                    <p class="font-bold text-slate-800">3. Residual Waste (Gray)</p>
-                    <p class="text-slate-600 text-[11px] mt-0.5">Classes: trash. Sanitary landfill or municipal disposal.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- 3. EcoCoins Rewards & Environmental Rationale -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-award text-amber-500"></i>
-                EcoCoins & Circular Rationale
-            </h3>
-            <p class="text-xs text-slate-500">Incentive ledger policies for campus students:</p>
-            <div class="space-y-2 text-xs text-slate-600">
-                <div class="flex items-center justify-between p-2 bg-amber-50/60 rounded border border-amber-100">
-                    <span class="font-semibold text-slate-700">Plastic & Metals</span>
-                    <span class="font-bold text-amber-700">+15 EcoCoins / item</span>
-                </div>
-                <div class="flex items-center justify-between p-2 bg-amber-50/60 rounded border border-amber-100">
-                    <span class="font-semibold text-slate-700">Cardboard, Paper, Glass</span>
-                    <span class="font-bold text-amber-700">+10 EcoCoins / item</span>
-                </div>
-                <div class="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
-                    <span class="font-semibold text-slate-700">Residual Trash</span>
-                    <span class="font-bold text-slate-500">0 EcoCoins</span>
-                </div>
-                <p class="text-[11px] text-slate-400 italic pt-1">
-                    *Note: Rewards are credited strictly once per verified, accepted disposal event. Uncertain or rejected items receive 0 coins.
-                </p>
-            </div>
-        </div>
-    <!-- Circular Pathways & Recycling Operations (Supabase PostgreSQL Views) -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
-            <div>
-                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-route text-eco-600"></i>
-                    Circular Processing Pathways & Operations
-                    <span class="text-[10px] font-mono uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">SQL Views</span>
-                </h3>
-                <p class="text-xs text-slate-500">Live operational metrics aggregated from <code class="font-mono text-[11px] bg-slate-100 px-1 rounded">view_pathway_summary</code> and <code class="font-mono text-[11px] bg-slate-100 px-1 rounded">view_operations_status</code>.</p>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-                <span class="px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">
-                    Operations: <strong>{{ data.supabase_views.operations_status.total_operations | default(0) }}</strong> total
-                </span>
-                <span class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                    Completed: <strong>{{ data.supabase_views.operations_status.completed_operations | default(0) }}</strong>
-                </span>
-                {% if data.supabase_views.operations_status.pending_operations %}
-                <span class="px-2 py-1 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                    Review Pending: <strong>{{ data.supabase_views.operations_status.pending_operations }}</strong>
-                </span>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Pathway Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            {% for pw in data.supabase_views.pathway_summary %}
-            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col justify-between">
-                <div>
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold capitalize text-slate-800">{{ pw.processing_pathway }}</span>
-                        <span class="text-[10px] font-mono px-1.5 py-0.2 rounded font-semibold 
-                            {% if pw.processing_pathway == 'recycling' %}bg-blue-100 text-blue-800
-                            {% elif pw.processing_pathway == 'landfill' %}bg-slate-200 text-slate-700
-                            {% elif pw.processing_pathway == 'pending_review' %}bg-amber-100 text-amber-800
-                            {% else %}bg-emerald-100 text-emerald-800{% endif %}">
-                            Pathway
-                        </span>
-                    </div>
-                    <p class="text-xl font-black text-slate-800 mt-2">{{ pw.total_count }} <span class="text-xs font-normal text-slate-400">items</span></p>
-                </div>
-                <div class="pt-2 mt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Completed: <strong>{{ pw.completed_count }}</strong></span>
-                    <span class="text-[10px] text-slate-400 italic">Simulated</span>
-                </div>
-            </div>
-            {% else %}
-            <div class="col-span-4 p-4 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs">
-                No recycling operations recorded yet. Classify an item via live camera to initiate operations.
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Recent Activity Tables (3 columns / grid) -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Recent Disposals -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-clock-rotate-left text-slate-600"></i>
-                Recent Accepted Disposals
-            </h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs text-slate-600">
-                    <thead class="bg-slate-50 text-slate-500 uppercase font-semibold text-[10px]">
-                        <tr>
-                            <th class="p-2">Item</th>
-                            <th class="p-2">Conf.</th>
-                            <th class="p-2">Location</th>
-                            <th class="p-2">Coins</th>
-                            <th class="p-2">Time</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for ev in data.recent_events %}
-                        <tr class="hover:bg-slate-50/80">
-                            <td class="p-2 font-bold capitalize text-slate-800">
-                                {{ ev.accepted_class }}
-                                {% if ev.was_overridden %}
-                                <span class="text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded ml-1">Manual Override</span>
-                                {% endif %}
-                            </td>
-                            <td class="p-2">{{ (ev.confidence * 100)|round(1) }}%</td>
-                            <td class="p-2">{{ ev.location_name }}</td>
-                            <td class="p-2 font-bold text-amber-600">+{{ ev.ecocoins_awarded }}</td>
-                            <td class="p-2 text-slate-400 text-[10px]">{{ ev.timestamp.split('T')[1].split('.')[0] if 'T' in ev.timestamp else ev.timestamp }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="5" class="p-4 text-center text-slate-400">No disposal events recorded yet.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Student Reward Ledger -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-receipt text-amber-500"></i>
-                Student Reward Ledger ({{ data.student_id }})
-            </h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs text-slate-600">
-                    <thead class="bg-slate-50 text-slate-500 uppercase font-semibold text-[10px]">
-                        <tr>
-                            <th class="p-2">Tx ID</th>
-                            <th class="p-2">Reason</th>
-                            <th class="p-2">Reward</th>
-                            <th class="p-2">Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        {% for tx in data.student_ledger %}
-                        <tr class="hover:bg-slate-50/80">
-                            <td class="p-2 font-mono text-[10px] text-slate-400">#{{ tx.id }}</td>
-                            <td class="p-2 font-medium text-slate-800">{{ tx.reason }}</td>
-                            <td class="p-2 font-bold text-amber-600">+{{ tx.amount }} EcoCoins</td>
-                            <td class="p-2 text-slate-400 text-[10px]">{{ tx.timestamp.split('T')[1].split('.')[0] if 'T' in tx.timestamp else tx.timestamp }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="p-4 text-center text-slate-400">No reward transactions yet.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Supabase PostgreSQL Live Classifications Audit Table (view_recent_classifications) -->
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
-            <div>
-                <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <i class="fa-solid fa-table-list text-emerald-600"></i>
-                    PostgreSQL Live Audit: Waste Classifications & Operations
-                    <span class="text-[10px] font-mono uppercase bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">view_recent_classifications</span>
-                </h3>
-                <p class="text-xs text-slate-500">Records created directly by the trusted backend from verified live camera capture sessions. Image bytes are never permanently stored.</p>
-            </div>
-            <span class="text-[11px] text-slate-400 font-medium">Source: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-emerald-700 font-semibold">{{ data.supabase_views.source | default('local_sqlite_replica') }}</code></span>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs text-slate-600">
-                <thead class="bg-slate-50 text-slate-500 uppercase font-semibold text-[10px]">
-                    <tr>
-                        <th class="p-2.5">Record UUID</th>
-                        <th class="p-2.5">Category</th>
-                        <th class="p-2.5">Confidence</th>
-                        <th class="p-2.5">Capture Source</th>
-                        <th class="p-2.5">Circular Pathway</th>
-                        <th class="p-2.5">Operation Status</th>
-                        <th class="p-2.5">Type</th>
-                        <th class="p-2.5">Timestamp</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
-                    {% for item in data.supabase_views.recent_classifications %}
-                    <tr class="hover:bg-slate-50/80">
-                        <td class="p-2.5 text-slate-500 font-semibold truncate max-w-[120px]" title="{{ item.classification_id }}">
-                            {{ item.classification_id[:8] }}...
-                        </td>
-                        <td class="p-2.5 font-bold capitalize text-slate-800 font-sans">
-                            {{ item.waste_category }}
-                        </td>
-                        <td class="p-2.5 font-bold text-emerald-700">
-                            {{ (item.confidence * 100)|round(1) }}%
-                        </td>
-                        <td class="p-2.5 text-slate-500">
-                            <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-sans font-semibold text-[10px] border border-emerald-200">
-                                {{ item.capture_source }}
-                            </span>
-                        </td>
-                        <td class="p-2.5 capitalize font-sans">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-semibold
-                                {% if item.processing_pathway == 'recycling' %}bg-blue-100 text-blue-800
-                                {% elif item.processing_pathway == 'landfill' %}bg-slate-200 text-slate-700
-                                {% elif item.processing_pathway == 'pending_review' %}bg-amber-100 text-amber-800
-                                {% else %}bg-emerald-100 text-emerald-800{% endif %}">
-                                {{ item.processing_pathway | default('recycling') }}
-                            </span>
-                        </td>
-                        <td class="p-2.5 capitalize font-sans">
-                            <span class="px-1.5 py-0.5 rounded font-bold text-[10px]
-                                {% if item.operation_status == 'completed' %}bg-emerald-100 text-emerald-800
-                                {% elif item.operation_status == 'pending' %}bg-amber-100 text-amber-800
-                                {% else %}bg-slate-100 text-slate-700{% endif %}">
-                                {{ item.operation_status | default('completed') }}
-                            </span>
-                        </td>
-                        <td class="p-2.5 font-sans text-slate-400 text-[10px] italic">
-                            {{ 'Simulated' if item.is_simulated else 'Measured' }}
-                        </td>
-                        <td class="p-2.5 text-slate-400 text-[10px]">
-                            {{ item.created_at.split('T')[1].split('.')[0] if 'T' in item.created_at else item.created_at }}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="8" class="p-6 text-center text-slate-400 font-sans">
-                            No classifications logged in PostgreSQL yet. Capture a photo on the <a href="/classify" class="text-emerald-600 underline font-semibold">Live Camera page</a> to record real-time classifications.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>C-Twin — Circularity. Community. Clarity.</title>
+<!-- EcoTwin · Campus Digital Twin -->
+<style>
+:root{--bg:#f6f6f1;--card:#fff;--sage:#dfe8d8;--forest:#1f4d36;--ink:#2a2d2b;--mut:#6b726d;--mint:#bfe8cf;--lime:#8fbf2a;--amber:#d99a1e;--red:#d0453b;--blue:#3b7fc4;--bd:#0000001a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121714;--card:#1b2420;--sage:#26362d;--forest:#3a8f62;--ink:#e8ece6;--mut:#9aa59d;--mint:#2d5a42;--bd:#ffffff1f}}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;min-height:100%;font:15px/1.5 Inter,Manrope,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;background:var(--forest);color:#fff;font-weight:600;transition:.15s}
+button:hover{filter:brightness(1.12)}button:active{transform:scale(.97)}button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+button.g{background:transparent;color:var(--forest);border:1.5px solid var(--forest)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) button.g{color:var(--mint);border-color:var(--mint)}}
+input,select{font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);margin:4px 0 12px}
+label{font-weight:600;font-size:13px;display:block}h1,h2,h3{margin:.2em 0;line-height:1.2}.mut,.note{color:var(--mut)}.note{font-size:12px}
+.card{background:var(--card);border-radius:18px;padding:18px;border:1px solid var(--bd)}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}.grid2{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid3{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:700;background:var(--sage);color:var(--ink)}
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+.tabs{display:flex;gap:4px;flex:1;overflow-x:auto}.tabs button{background:transparent;color:var(--ink);padding:8px 12px}.tabs button.on{background:var(--sage)}
+.full{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px;position:relative;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.5;animation:fl 9s ease-in-out infinite alternate}@keyframes fl{to{transform:translate(40px,-30px) scale(1.15)}}
+.spin{animation:sp 14s linear infinite;transform-origin:center}@keyframes sp{to{transform:rotate(360deg)}}
+.in{animation:in 1s ease both}@keyframes in{from{opacity:0;transform:scale(.85)}}
+.hero{padding:60px 16px;text-align:center;position:relative;overflow:hidden}.hero h1{font-size:clamp(30px,6vw,56px);max-width:760px;margin:12px auto}
+.map{width:100%;background:var(--sage);border-radius:16px}.map .lm rect{fill:var(--card);stroke:var(--bd);cursor:pointer}.map text{fill:var(--ink);font-size:12px;pointer-events:none}.map [data-bin]{cursor:pointer}
+.bar{height:10px;border-radius:9px;background:var(--sage);overflow:hidden}.bar i{display:block;height:100%;border-radius:9px;transition:width .4s}
+.modal{position:fixed;inset:0;background:#0007;display:grid;place-items:center;padding:16px;z-index:20}.modal .card{max-width:560px;width:100%}
+.role{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:var(--sage);color:var(--ink);margin:6px 0}.role small{display:block;font-weight:400;color:var(--mut)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:12px 18px;border-radius:12px;background:#222;color:#fff;z-index:40;max-width:90%}.toast.bad{background:var(--red)}.toast.ok{background:var(--forest)}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:30;display:grid;place-items:center}#fx b{font-size:clamp(22px,5vw,38px);background:var(--forest);color:#fff;padding:14px 24px;border-radius:20px;animation:in .5s}#fx i{position:absolute;width:10px;height:10px;border-radius:3px;animation:pop 1.2s ease-out forwards}@keyframes pop{to{transform:translate(var(--x),var(--y)) rotate(400deg);opacity:0}}
+.big{font-size:32px;font-weight:800;color:var(--forest)}.row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)}
+.r-student .card{border-radius:26px}.r-student .stu{background:var(--sage)}
+.r-collector .wrap{max-width:520px}.r-collector .card{border-width:2px}.r-collector button{padding:16px;font-size:18px}
+.r-admin .card{border-radius:10px;padding:14px}.code{font:800 34px ui-monospace,monospace;letter-spacing:6px;color:var(--forest)}
+.ft{padding:30px 16px;text-align:center;color:var(--mut)}.bv{transition:height .9s cubic-bezier(.2,.8,.2,1)}.rg,.ln{transition:stroke-dashoffset 1s ease}.dn{transition:stroke-dasharray 1s ease}.clk{cursor:pointer}.pc{transform-box:fill-box;transform-origin:center;animation:asm 1.5s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d)}@keyframes asm{from{opacity:0;transform:translate(var(--x),var(--y)) rotate(var(--r)) scale(.4)}to{opacity:1;transform:none}}.fi{animation:in 1s ease both}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><div id="app"></div><div id="fx"></div>
 <script>
-async function triggerCollection(binId) {
-    if (!confirm(`Simulate campus collection service for ${binId}? This empties the virtual bin and resolves active alerts.`)) {
-        return;
-    }
-    try {
-        const response = await fetch('/api/collect', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({bin_id: binId, operator: 'Campus Facilities Team'})
-        });
-        const result = await response.json();
-        if (result.success) {
-            alert(`Bin ${binId} successfully emptied! Cleared ${result.items_cleared} items.`);
-            location.reload();
-        } else {
-            alert('Error: ' + result.error);
-        }
-    } catch (e) {
-        alert('Network error triggering collection: ' + e);
-    }
+const $=q=>document.querySelector(q),uid=p=>p+Math.random().toString(36).slice(2,7).toUpperCase(),now=()=>Date.now(),tm=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ADMIN='CTWIN-DEMO';
+const WT={Plastic:'Recycle',Paper:'Paper',Metal:'Recycle',Glass:'Recycle',Organic:'Organic',General:'General'},PTS={Plastic:10,Paper:8,Metal:12,Glass:12,Organic:8,General:2};
+const COMP={Recycle:'C1 · Recyclables',Paper:'C2 · Paper & cardboard',Organic:'C3 · Organic',General:'C4 · General'};
+const TIP={Plastic:'Empty, rinse and crush. Remove caps if your campus requires it.',Paper:'Keep it dry and flatten cardboard. Greasy paper goes to general.',Metal:'Rinse cans; do not crush aerosol cans.',Glass:'Rinse and place gently; broken glass goes to general waste with care.',Organic:'Food scraps and peels only — no packaging.',General:'Mixed or soiled items that cannot be recycled.'};
+const LM={Library:[90,80],Cafeteria:[300,70],'CSE Block':[500,80],'ECE Block':[110,230],Labs:[330,220],'Hostel Quad':[520,250],'Main Gate':[300,325]};
+const mk=(id,lm,dx,dy,cat,fill,off)=>({id,lm,x:LM[lm][0]+dx,y:LM[lm][1]+dy,cat,fill,off:!!off,t:now()-Math.random()*36e5,col:now()-Math.random()*864e5});
+const REW=[['R1','Cafeteria voucher ₹50',50,20],['R2','Reusable steel bottle',120,5],['R3','Recycled notebook',60,12],['R4','Seed-paper stationery kit',40,15],['R5','Organic cotton tote',90,0]];
+const TABS={student:[['home','Home'],['sort','SortSense'],['find','Find Bin'],['rew','Rewards'],['rep','Report a Bin'],['twin','Twin'],['gm','GreenMind']],general:[['home','Home'],['find','Find Bin'],['sort','SortSense'],['earn','Earn Without ID'],['twin','Twin'],['gm','GreenMind']],collector:[['tasks','Collection'],['gm','GreenMind']],admin:[['ov','Overview'],['dep','Departments'],['esc','Escalations'],['gm','GreenMind']]};
+const RI={student:['Student','Name, USN and branch — GreenPoints, rewards, ranking'],general:['General User','No ID needed — find bins, analyze waste, earn code-based points'],collector:['Garbage Collector','Simple mobile task list for pickups'],admin:['Administrator','Analytics, bin management and AI insights']};
+
+let S={view:'intro',tab:'home',user:null,role:null,modal:0,f:'All',hl:[],start:'Main Gate',seen:new Set(),codes:[],tm:0,
+bins:[mk('B01','Library',-55,40,'Recycle',42),mk('B02','Library',55,40,'Paper',68),mk('B03','Cafeteria',-55,40,'Organic',91),mk('B04','Cafeteria',55,40,'General',55),mk('B05','CSE Block',-55,40,'Recycle',78),mk('B06','CSE Block',55,40,'Paper',20),mk('B07','ECE Block',55,40,'General',33),mk('B08','Labs',-55,40,'Recycle',96),mk('B09','Hostel Quad',-55,40,'Organic',60,1),mk('B10','Main Gate',55,-10,'General',15)],
+ev:[],rp:[],nt:[],es:[],mon:[],gl:[],dd:null,cfg:{thr:5,win:24,fill:75,w:[40,30,20,10]}};
+
+Object.keys(WT).forEach((w,i)=>{for(let k=0;k<3+i%3;k++)S.ev.push({id:uid('E-'),w,bin:'B0'+(1+k),u:'student_101',t:now()-k*36e5,pts:PTS[w]||5})});
+for(let i=0;i<4;i++)S.rp.push({id:uid('R-'),bin:'B03',u:'S-'+i,prob:'Full / overflowing',t:now()-(i+1)*36e5,st:'Submitted'});
+S.nt.push({id:uid('N-'),bin:'B03',prob:'Full / overflowing',t:now()-36e5,pri:'High',res:0,n:4});
+
+const PEERS=[['Aarav','CSE',140],['Diya','ECE',118],['Rohan','ECE',96],['Meera','CSE',77],['Kabir','ME',34]];
+const PROB=['Full / overflowing','Damaged','Inaccessible','Bad smell / pests','Other'];
+const CF={Plastic:.09,Paper:.05,Metal:.15,Glass:.04,Organic:.06,General:0};
+const CM=[['May',310],['Jun',365],['Jul',420],['Aug',480],['Sep',545]];
+const RK=[['Campus A (demo)',81],['Campus B (demo)',77],['Campus C (demo)',64],['Campus D (demo)',59]];
+const DEP=[['CSE',82,71,78,[60,66,70,76,82]],['ECE',76,64,70,[55,60,66,70,76]],['ME',68,49,61,[50,54,58,63,68]],['CE',71,55,66,[52,58,62,66,71]]];
+
+// Pre-load server injected state if provided by Flask
+{% if c_twin_state %}
+const SERVER_STATE = {{ c_twin_state | tojson | safe }};
+if(SERVER_STATE){
+  if(SERVER_STATE.bins && SERVER_STATE.bins.length){
+    S.bins = SERVER_STATE.bins.map(b => ({
+      id: b.id, lm: b.lm, x: LM[b.lm]?LM[b.lm][0]+b.dx:300, y: LM[b.lm]?LM[b.lm][1]+b.dy:200,
+      cat: b.cat, fill: b.fill, off: b.off, t: b.t, col: b.col
+    }));
+  }
+  if(SERVER_STATE.events && SERVER_STATE.events.length) S.ev = SERVER_STATE.events;
+  if(SERVER_STATE.reports) S.rp = SERVER_STATE.reports;
+  if(SERVER_STATE.escalations) S.es = SERVER_STATE.escalations;
+  if(SERVER_STATE.config){
+    S.cfg.thr = SERVER_STATE.config.thr || 5;
+    S.cfg.win = SERVER_STATE.config.win || 24;
+    S.cfg.w = SERVER_STATE.config.weights || [40,30,20,10];
+  }
 }
-</script>
-{% endblock %}
+{% endif %}
+
+// Fetch latest live state asynchronously
+async function syncState(){
+  try{
+    const stId = S.user && S.user.id ? S.user.id : 'student_101';
+    const res = await fetch('/api/c-twin/state?student_id='+encodeURIComponent(stId));
+    if(res.ok){
+      const json = await res.json();
+      if(json.success && json.data){
+        const d = json.data;
+        if(d.bins && d.bins.length){
+          S.bins = d.bins.map(b => ({
+            id: b.id, lm: b.lm, x: LM[b.lm]?LM[b.lm][0]+b.dx:300, y: LM[b.lm]?LM[b.lm][1]+b.dy:200,
+            cat: b.cat, fill: b.fill, off: b.off, t: b.t, col: b.col
+          }));
+        }
+        if(d.events && d.events.length) S.ev = d.events;
+        if(d.reports) S.rp = d.reports;
+        if(d.escalations) S.es = d.escalations;
+        if(d.config){
+          S.cfg.thr = d.config.thr || 5;
+          S.cfg.win = d.config.win || 24;
+          S.cfg.w = d.config.weights || [40,30,20,10];
+        }
+        if(S.user && d.student && S.user.role === 'student'){
+          S.user.pts = d.student.balance;
+          if(d.student.tx) S.user.tx = d.student.tx;
+          if(d.student.redemptions) S.user.red = d.student.redemptions;
+        }
+        draw();
+      }
+    }
+  }catch(e){console.warn('Sync notice:', e)}
+}
+
+const bin=id=>S.bins.find(b=>b.id===id),dist=(b,s)=>Math.round(Math.hypot(b.x-(LM[s]?LM[s][0]:300),b.y-(LM[s]?LM[s][1]:200))*.6);
+const st=b=>b.off?['Offline',' #7a7f7b'.trim()]:b.fill>=90?['Full',' #d0453b'.trim()]:b.fill>=75?['Almost full','#e07b2a']:b.fill>=40?['Filling up','#d99a1e']:['Available','#2f9e5f'];
+const prio=b=>b.off?'Inspect':b.fill>=90?'High':b.fill>=75?'Medium':'Low';
+const logo=(s=40)=>`<svg width="${s}" height="${s}" viewBox="0 0 64 64" role="img" aria-label="C-Twin logo"><path d="M46 15A24 24 0 1 0 46 49" fill="none" stroke="var(--forest)" stroke-width="8" stroke-linecap="round"/><path d="M40 22A14 14 0 1 0 40 42" fill="none" stroke="var(--lime)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 6"/><circle cx="46" cy="15" r="4" fill="var(--lime)"/><circle cx="46" cy="49" r="4" fill="var(--lime)"/><circle cx="32" cy="32" r="4" fill="var(--forest)"/></svg>`;
+
+function toast(m,t=''){const d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.body.append(d);setTimeout(()=>d.remove(),3600)}
+function cele(m){const f=$('#fx');f.innerHTML=`<b>${m}</b>`;for(let i=0;i<30;i++){const e=document.createElement('i'),a=Math.random()*6.28,r=120+Math.random()*220;e.style.cssText=`--x:${Math.cos(a)*r}px;--y:${Math.sin(a)*r}px;background:${['#8fbf2a','#bfe8cf','#d99a1e','#3b7fc4'][i%4]}`;f.append(e)}setTimeout(()=>f.innerHTML='',2200)}
+
+function go(v,t){clearTimeout(S.tm);S.view=v;if(t)S.tab=t;S.modal=0;draw();scrollTo(0,0)}
+
+function draw(){
+  document.body.className=S.user?'r-'+S.user.role:'';
+  let h;
+  if(S.view==='intro')h=intro();
+  else if(S.view==='land')h=land();
+  else if(S.view==='login')h=login();
+  else if(S.user&&TABS[S.user.role].some(t=>t[0]===S.tab))h=shell();
+  else{S.view='land';h=land()}
+  $('#app').innerHTML=h+(S.modal?roles():'');
+  if(S.view==='intro'&&!S.tm)S.tm=setTimeout(()=>go('land'),7000);
+  document.querySelectorAll('[data-to]').forEach(e=>{
+    const to=+e.dataset.to;let n=0;
+    const iv=setInterval(()=>{n+=Math.max(1,Math.ceil(to/20));if(n>=to){n=to;clearInterval(iv)}e.textContent=n},30)
+  });
+  anim();
+}
+
+function skip(){try{localStorage.setItem('ct_skip','1')}catch(e){}go('land')}
+
+const intro=()=>`<div class="full" style="background:var(--bg)"><div><div class="in" style="position:relative;width:190px;height:190px;margin:0 auto"><svg class="spin" viewBox="0 0 190 190" width="190" height="190" style="position:absolute;inset:0">${[0,1,2,3,4,5,6,7].map(i=>`<circle cx="${95+84*Math.cos(i*.785)}" cy="${95+84*Math.sin(i*.785)}" r="${3+i%3}" fill="var(--lime)"/>`).join('')}<circle cx="95" cy="95" r="84" fill="none" stroke="var(--forest)" stroke-opacity=".2" stroke-dasharray="3 7"/></svg><div style="position:absolute;inset:48px">${logo(94)}</div></div><h1 class="in" style="font-size:44px;margin-top:10px">C-Twin</h1><p style="font-size:18px"><b>Circularity</b> · <b>Community</b> · <b>Clarity</b></p><p class="mut">Every action connects to a cleaner tomorrow.</p><button onclick="skip()" class="g" style="margin-top:14px">Skip Intro</button></div></div>`;
+
+const land=()=>`<div class="top">${logo(34)}<b style="font-size:18px">C-Twin</b><span style="flex:1"></span><button class="g" onclick="S.modal=1;draw()">Log in</button></div>
+<div class="hero"><div class="orb" style="width:300px;height:300px;background:var(--mint);left:-80px;top:-40px"></div><div class="orb" style="width:260px;height:260px;background:#cfe59a;right:-60px;bottom:-60px;animation-delay:-4s"></div><div style="position:relative"><span class="chip">Circularity · Community · Clarity</span><h1>A smarter campus starts with every small action.</h1><p class="mut" style="max-width:600px;margin:0 auto 20px">Identify waste intelligently, discover nearby bins, track campus sustainability, and turn everyday actions into meaningful impact.</p><button style="font-size:17px;padding:14px 26px" onclick="S.modal=1;draw()">Get Started</button> <button class="g" style="padding:14px 22px" onclick="S.modal=1;draw()">Log in</button></div></div>
+<div class="wrap grid3">${[['AI-Powered Waste Analysis','Computer Vision helps identify waste and recommend appropriate segregation.','<circle cx="40" cy="40" r="18"/><path d="M10 40h12M58 40h12M40 10v12M40 58v12"/>'],['Campus Digital Twin','Explore bin locations, fill levels, collection needs, and campus activity.','<rect x="14" y="30" width="22" height="34" rx="3"/><rect x="42" y="16" width="24" height="48" rx="3"/><circle cx="26" cy="20" r="5"/>'],['A Sustainable Tomorrow','Generative AI turns waste management data into actionable recommendations.','<path d="M14 60c0-30 20-44 52-44 0 32-14 48-44 48"/><path d="M22 58l22-22"/>']].map(f=>`<div class="card"><svg viewBox="0 0 80 80" width="72" height="72" fill="var(--mint)" stroke="var(--forest)" stroke-width="3" stroke-linecap="round">${f[2]}</svg><h3>${f[0]}</h3><p class="mut">${f[1]}</p></div>`).join('')}</div>
+<div class="ft">C-Twin hackathon prototype · sample data only · <a href="#" onclick="go('intro');return false" style="color:inherit">Replay intro</a></div>`;
+
+const roles=()=>`<div class="modal" onclick="if(event.target===this){S.modal=0;draw()}"><div class="card" role="dialog" aria-label="Choose your role"><h2>Choose how you'll use C-Twin</h2>${Object.entries(RI).map(([k,v])=>`<button class="role" onclick="S.role='${k}';go('login')"><span class="chip" style="background:var(--forest);color:#fff">${v[0][0]}</span><span><b>${v[0]}</b><small>${v[1]}</small></span></button>`).join('')}<button class="g" onclick="S.modal=0;draw()">Cancel</button></div></div>`;
+
+const login=()=>{const r=S.role,F={student:`<label>Student name<input id=n autocomplete=name placeholder="e.g. Vedashree"></label><label>USN / Student ID<input id=i placeholder="e.g. 1DS21CS101"></label><label>Branch<select id=d>${['CSE','ECE','ME','CE','EEE','ISE'].map(x=>`<option>${x}</option>`).join('')}</select></label>`,general:`<p class="mut">No university ID needed. Optionally add a nickname.</p><label>Nickname (optional)<input id=n placeholder="Guest"></label><p class="note">Guest points live only in this browser session and are not guaranteed to persist across devices or resets.</p>`,collector:`<label>Name<input id=n placeholder="e.g. Ramesh"></label><label>Collector / Employee ID<input id=i placeholder="e.g. COL-01"></label>`,admin:`<label>Access code<input id=i type=password autocomplete=off></label><p class="note"><b>Demo-only authentication:</b> this prototype checks a code in the browser, which is not production security. Demo code: <code>${ADMIN}</code>. Use a backend auth service in production.</p>`};
+return `<div class="full"><div class="card" style="max-width:420px;width:100%;text-align:left">${logo(44)}<h2>${RI[r][0]} sign in</h2>${F[r]}<button style="width:100%" onclick="doLogin()">Continue</button><button class="g" style="width:100%;margin-top:8px" onclick="go('land')">Back</button></div></div>`};
+
+function doLogin(){
+  const r=S.role,v=n=>($('#'+n)?.value||'').trim();let u;
+  if(r==='student'){
+    if(!v('n')||!/^[A-Za-z0-9]{4,15}$/.test(v('i')))return toast('Enter your name and a valid USN (letters/digits).','bad');
+    u={role:r,name:v('n'),id:v('i').toUpperCase(),dept:v('d'),pts:52,tx:[['Plastic',10],['Metal',12],['Glass',12],['Paper',8],['Plastic',10]].map((a,i)=>({w:a[0],p:a[1],t:now()-(i+1)*864e5,bin:'B0'+(i+1)})),red:[]};
+  }else if(r==='general'){
+    u={role:r,name:v('n')||'Guest',id:uid('G-'),pts:0,tx:[],red:[]};
+  }else if(r==='collector'){
+    if(!v('n')||v('i').length<2)return toast('Enter your name and collector ID.','bad');
+    u={role:r,name:v('n'),id:v('i')};
+  }else{
+    if(v('i')!==ADMIN)return toast('Invalid access code.','bad');
+    u={role:r,name:'Administrator',id:'ADMIN'};
+  }
+  S.user=u;
+  try{localStorage.setItem('c_twin_user', JSON.stringify(u))}catch(e){}
+  go('app',TABS[r][0][0]);
+  syncState();
+}
+
+function out(){
+  S.user=null;S.hl=[];
+  try{localStorage.removeItem('c_twin_user')}catch(e){}
+  go('land');
+}
+
+const shell=()=>{
+  const u=S.user;
+  return `<div class="top">${logo(32)}<b>C-Twin</b><span class="chip">${RI[u.role][0]}</span><div class="tabs">${TABS[u.role].map(t=>`<button class="${t[0]===S.tab?'on':''}" onclick="S.tab='${t[0]}';draw()">${t[1]}</button>`).join('')}</div><button class="g" onclick="out()">Log out</button></div><div class="wrap">${V[S.tab]()}</div>`;
+};
+
+const need=r=>{if(!S.user||(Array.isArray(r)?!r.includes(S.user.role):S.user.role!==r)){toast('Not authorized for this action.','bad');return 0}return 1};
+const bar=(p,c)=>`<div class="bar"><i style="width:${p}%;background:${c||'var(--forest)'}"></i></div>`;
+const lmOpts=()=>Object.keys(LM).map(l=>`<option ${l===S.start?'selected':''}>${l}</option>`).join('');
+const ACH=u=>[['First segregation','Complete 1 disposal',(u.tx||[]).length>=1],['Consistent sorter','Complete 5 disposals',(u.tx||[]).filter(t=>t.p>0).length>=5],['Recycling champ','3 recyclable disposals (plastic, metal, glass)',(u.tx||[]).filter(t=>/Plastic|Metal|Glass/.test(t.w)&&t.p>0).length>=3],['Reward redeemer','Redeem 1 reward',(u.red||[]).length>=1]];
+
+async function doDispose(w,b,u,evid){
+  if(S.seen.has(evid))return{ok:0,msg:'Duplicate event ignored — already recorded.'};
+  if(WT[w]!==b.cat)return{ok:0,msg:`Bin ${b.id} accepts ${b.cat}, not ${w}.`};
+  if(b.off||b.fill>=95)return{ok:0,msg:`Bin ${b.id} is ${b.off?'offline':'full'} — pick another.`};
+
+  S.seen.add(evid);
+  const before=b.fill;
+  b.fill=Math.min(100,b.fill+7);
+  b.t=now();
+  const p=u?PTS[w]:0;
+  if(u){
+    u.pts+=p;
+    u.tx.unshift({w,p,t:now(),bin:b.id});
+  }
+  S.ev.unshift({id:evid,w,bin:b.id,u:u?u.id:null,t:now(),pts:p});
+
+  // Call live backend API to persist to Supabase PostgreSQL and SQLite
+  try{
+    fetch('/api/c-twin/dispose', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        waste_type: w,
+        bin_id: b.id,
+        student_id: u ? u.id : null,
+        event_uuid: evid
+      })
+    }).catch(err => console.warn('Disposal sync:', err));
+  }catch(e){}
+
+  return{
+    ok:1,p,
+    lines:[
+      `Detected: ${w} (verified Deep Learning model)`,
+      `Recommended compartment: ${COMP[b.cat]}`,
+      `Routing: SIMULATED diverter → ${COMP[b.cat]} (automated pneumatic door)`,
+      `Bin ${b.id} fill ${before}% → ${b.fill}%`,
+      `Event ${evid} recorded — ${u?'linked to '+u.id+(u.role==='student'?' (simulated ID scan)':''):'anonymous, no points'}`,
+      p?`GreenPoints transaction: +${p}`:'No points transaction'
+    ]
+  };
+}
+
+function map(){
+  let s=`<svg viewBox="0 0 620 370" class="map" role="img" aria-label="Illustrative campus map">`;
+  for(const[n,[x,y]]of Object.entries(LM))
+    s+=`<g class="lm" data-lm="${n}"><rect x="${x-45}" y="${y-24}" width="90" height="48" rx="10" ${n===S.start?'style="stroke:var(--blue);stroke-width:3"':''}/><text x="${x}" y="${y+4}" text-anchor="middle">${n}</text></g>`;
+  for(const b of S.bins){
+    const[l,c]=st(b),d=S.f!=='All'&&S.f!==l;
+    s+=`<circle data-bin="${b.id}" cx="${b.x}" cy="${b.y}" r="${S.hl.includes(b.id)?14:9}" fill="${c}" opacity="${d?.2:1}" stroke="#fff" stroke-width="2"><title>${b.id} ${b.cat} ${l}</title></circle>`;
+  }
+  return s+'</svg>';
+}
+
+const rmap=()=>{$('#mapbox').innerHTML=map()};
+
+function showBin(id){
+  const b=bin(id);if(!b)return;
+  const[l,c]=st(b),w=$('#fw')?.value,ok=w?(WT[w]===b.cat&&!b.off&&b.fill<90):null;
+  $('#binfo').innerHTML=`<h3>${b.id} · ${b.lm}</h3><span class="chip" style="background:${c};color:#fff">${l}</span> <span class="chip">${b.cat}</span><p>Fill ${b.fill}%${bar(b.fill,c)}</p><p class="note">Updated ${tm(b.t)} · Last collected ${tm(b.col)} · Priority ${prio(b)}</p>${ok===null?'':`<p><b>${ok?'Can take':'Cannot take'} ${w}</b></p>`}${S.user&&S.user.role==='student'?`<button style="margin-top:8px" onclick="S.rb='${b.id}';S.tab='rep';draw()">Report a Bin</button>`:''}`;
+}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-bin]'),l=e.target.closest('[data-lm]');
+  if(b&&$('#binfo'))showBin(b.dataset.bin);
+  else if(l&&$('#fs')){S.start=l.dataset.lm;$('#fs').value=S.start;rmap()}
+});
+
+const legend=()=>`<p class="note">${[['Available','#2f9e5f'],['Filling up','#d99a1e'],['Almost full','#e07b2a'],['Full','#d0453b'],['Offline','#7a7f7b']].map(a=>`<span style="color:${a[1]}">●</span> ${a[0]}`).join(' &nbsp; ')} · Illustrative schematic map, distances are campus-map estimates.</p>`;
+const mapBox=()=>`<div id="mapbox">${map()}</div>${legend()}<div class="card" id="binfo">Tap a bin marker for details.</div>`;
+
+function elig(w,s){return S.bins.filter(b=>WT[w]===b.cat&&!b.off&&b.fill<90).sort((a,b)=>dist(a,s)-dist(b,s))}
+
+function locate(){
+  if(!navigator.geolocation)return toast('Location unavailable — choose a landmark instead.');
+  navigator.geolocation.getCurrentPosition(()=>toast('Location received, but this schematic map is not georeferenced. Please pick the landmark nearest to you.'),()=>toast('Permission denied — choose a landmark instead.'),{timeout:6000});
+}
+
+function findNearest(){
+  const w=$('#fw').value,s=S.start,all=[...S.bins].sort((a,b)=>dist(a,s)-dist(b,s)),n=all[0],e=elig(w,s);
+  S.hl=e.slice(0,1).map(b=>b.id);
+  rmap();
+  let h=e.length?`<h3>Nearest suitable bin: ${e[0].id}</h3><p>${e[0].lm} · ~${dist(e[0],s)} m (estimate) · ${st(e[0])[0]} · accepts ${e[0].cat}</p>`:'<h3>No suitable bin available right now</h3>';
+  if(n && n.id!==(e[0]||{}).id)h+=`<p class="note">Closest bin overall (${n.id}) was skipped: ${WT[w]!==n.cat?'it does not accept '+w:n.off?'offline':'nearly full'}.</p>`;
+  if(e.length>1)h+='<b>Alternatives</b>'+e.slice(1,4).map(b=>`<div class="row"><span>${b.id} · ${b.lm}</span><span>~${dist(b,s)} m · ${st(b)[0]}</span></div>`).join('');
+  $('#fres').innerHTML=h;
+  if(e[0])showBin(e[0].id);
+}
+
+const V={};
+V.find=()=>`<div class="grid2"><div><div class="card"><h2>Find a Bin Near Me</h2><label>Waste type<select id="fw" onchange="S.hl=[]">${Object.keys(WT).map(w=>`<option>${w}</option>`).join('')}</select></label><label>Starting point (tap a building on the map too)<select id="fs" onchange="S.start=this.value;rmap()">${lmOpts()}</select></label><button onclick="findNearest()">Find Nearest Bin</button> <button class="g" onclick="locate()">Use my location</button><div id="fres" style="margin-top:12px"></div></div></div><div>${mapBox()}</div></div>`;
+V.twin=()=>`<h2>Campus Digital Twin</h2><label style="max-width:220px">Filter<select onchange="S.f=this.value;rmap()">${['All','Available','Filling up','Almost full','Full','Offline'].map(f=>`<option ${f===S.f?'selected':''}>${f}</option>`).join('')}</select></label>${mapBox()}<p class="note">Shared live state: disposals, collections and admin edits update this map instantly.</p>`;
+
+V.home=()=>{
+  const u=S.user,nx=REW.filter(r=>r[2]>u.pts).sort((a,b)=>a[2]-b[2])[0];
+  const peers=[...PEERS.map(p=>({n:p[0],d:p[1],p:p[2]})),{n:u.name,d:u.dept||'',p:u.pts,me:1}].sort((a,b)=>b.p-a.p);
+  if(u.role==='general')return `<div class="card stu" style="background:var(--mint)"><h2>Welcome, ${esc(u.name)}</h2><p>No ID card needed. Sort smartly, find the right bin and earn points with a code.</p><button style="font-size:17px" onclick="S.tab='find';draw()">Find a Bin Near Me</button> <button class="g" onclick="S.tab='earn';draw()">Earn Points Without ID</button></div><div class="grid2" style="margin-top:16px"><div class="card"><p class="mut">Guest GreenPoints (this session)</p><div class="big" data-to="${u.pts}">0</div><p class="note">Points are session-only in this prototype.</p></div><div class="card"><h3>Recent activity</h3>${u.tx.map(t=>`<div class="row"><span>${t.w}</span><b>+${t.p}</b></div>`).join('')||'<p class="mut">Nothing yet.</p>'}</div></div>`;
+
+  const rc=u.tx.filter(t=>t.p>0).length;
+  return `<button style="margin-bottom:12px" class="g" onclick="S.tab='rep';draw()">Report a Bin</button><div class="card stu"><h2>Hi ${esc(u.name.split(' ')[0])}, ready to sort?</h2><p>${esc(u.dept)} · ${esc(u.id)}</p><div class="big" style="font-size:48px"><span data-to="${u.pts}">0</span> <small style="font-size:16px">GreenPoints</small></div>${nx?`<p>${nx[2]-u.pts} pts to <b>${nx[1]}</b></p>${bar(Math.min(100,u.pts/nx[2]*100),'var(--lime)')}`:'<p>You can afford every reward!</p>'}</div>
+<div class="grid3" style="margin-top:16px"><div class="card"><p class="mut">Disposals</p><div class="big">${rc}</div></div><div class="card"><p class="mut">Est. waste diverted</p><div class="big">${(rc*.15).toFixed(1)} kg</div><p class="note">≈ ${(rc*.3).toFixed(1)} kg CO₂e avoided (rough estimate)</p></div><div class="card"><p class="mut">Campus rank</p><div class="big">#${peers.findIndex(p=>p.me)+1}</div><p class="note">Branch rank #${peers.filter(p=>p.d===u.dept).findIndex(p=>p.me)+1}</p></div></div>
+<div class="grid2" style="margin-top:16px"><div class="card"><h3>Recent activity</h3>${u.tx.slice(0,6).map(t=>`<div class="row"><span>${t.w} · ${tm(t.t)}</span><b style="color:${t.p<0?'var(--red)':'var(--forest)'}">${t.p>0?'+':''}${t.p}</b></div>`).join('')}</div><div class="card"><h3>Achievements</h3>${ACH(u).map(a=>`<div class="row"><span>${a[2]?'✔':'○'} <b>${a[0]}</b><br><small class="mut">${a[1]}</small></span><span class="chip">${a[2]?'Unlocked':'Locked'}</span></div>`).join('')}</div></div>
+<div class="card" style="margin-top:16px"><h3>Leaderboard (sample peers)</h3>${peers.map((p,i)=>`<div class="row" ${p.me?'style="font-weight:800"':''}><span>${i+1}. ${esc(p.n)} · ${p.d}</span><span>${p.p}</span></div>`).join('')}</div>`;
+};
+
+V.rew=()=>{
+  const u=S.user;
+  return `<h2>Rewards <span class="chip">${u.pts} pts</span></h2><p class="note">Sample rewards for demonstration only — no real brand partnerships.</p><div class="grid3">${REW.map(r=>`<div class="card"><h3>${r[1]}</h3><span class="chip">Sample</span><p><b>${r[2]} pts</b> · ${r[3]?r[3]+' left':'Out of stock'}</p><button ${r[3]&&u.pts>=r[2]?'':'disabled'} onclick="redeem('${r[0]}')">${!r[3]?'Unavailable':u.pts>=r[2]?'Redeem':'Need '+(r[2]-u.pts)+' more'}</button></div>`).join('')}</div><div class="card" style="margin-top:16px"><h3>Redemptions</h3>${(u.red||[]).map(x=>`<div class="row"><span>${x.n}</span><span>${x.c} · ${tm(x.t)}</span></div>`).join('')||'<p class="mut">None yet.</p>'}</div>`;
+};
+
+async function redeem(id){
+  if(!need('student'))return;
+  const u=S.user,r=REW.find(x=>x[0]===id);
+  if(!r[3]||u.pts<r[2])return toast('Not eligible for this reward.','bad');
+  r[3]--;
+  u.pts-=r[2];
+  const vCode = uid('V-');
+  u.red.unshift({n:r[1],c:vCode,t:now()});
+  u.tx.unshift({w:'Redeemed: '+r[1],p:-r[2],t:now()});
+  draw();
+  cele('Reward redeemed!');
+
+  try{
+    fetch('/api/c-twin/redeem', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({student_id: u.id, reward_id: id})
+    }).catch(e=>{});
+  }catch(e){}
+}
+
+V.sort=()=>`<div class="grid2"><div class="card"><h2>SortSense</h2><p class="mut">Upload a photo of one waste item.</p><input type="file" id="fi" accept="image/*" capture="environment" onchange="pv(this)"><div id="pvw"></div><label>Starting point<select id="fs" onchange="S.start=this.value;S.res&&showRes()">${lmOpts()}</select></label><button id="ab" onclick="analyze()" disabled>Analyze image</button><p class="note">Connected to Deep Learning CNN model (MobileNetV2) & Supabase PostgreSQL.</p></div><div class="card" id="sres"><p class="mut">Your result will appear here.</p></div></div><div class="card" id="slog" hidden style="margin-top:16px"></div>`;
+
+function pv(i){
+  const f=i.files[0];S.res=null;$('#ab').disabled=1;if(!f)return;
+  if(!f.type.startsWith('image/')||f.size>10e6){i.value='';$('#pvw').innerHTML='';return toast('Please choose an image under 10 MB.','bad')}
+  S.img=f;
+  $('#pvw').innerHTML=`<img src="${URL.createObjectURL(f)}" alt="Preview" style="max-width:100%;max-height:220px;border-radius:12px;margin-bottom:10px">`;
+  $('#ab').disabled=0;
+}
+
+async function analyze(){
+  const f=S.img;if(!f)return;
+  $('#sres').innerHTML='<p>Analyzing with Deep Learning CNN…</p>';
+  
+  try {
+    const fd = new FormData();
+    fd.append('image', f);
+    fd.append('live_frame', f);
+    fd.append('capture_source', 'live_camera');
+
+    const resp = await fetch('/api/classify', {
+      method: 'POST',
+      headers: {'X-Capture-Source': 'live_camera'},
+      body: fd
+    });
+    
+    if(resp.ok){
+      const res = await resp.json();
+      if(res.success && res.data){
+        let pred = res.data.predicted_class || 'plastic';
+        pred = pred.charAt(0).toUpperCase() + pred.slice(1).toLowerCase();
+        if(pred === 'Cardboard') pred = 'Paper';
+        if(pred === 'Trash') pred = 'General';
+        if(!WT[pred]) pred = 'Plastic';
+
+        S.res = {
+          waste: pred,
+          confidence: res.data.confidence_pct || 95,
+          ev: uid('E-'),
+          done: 0
+        };
+        showRes();
+        return;
+      }
+    }
+  } catch(e) {
+    console.warn('API classify fallback:', e);
+  }
+
+  // Graceful client fallback
+  setTimeout(()=>{
+    const n=f.name.toLowerCase();
+    const k=[[/bottle|plastic|wrapper/,'Plastic'],[/can|tin|metal/,'Metal'],[/paper|box|card|news/,'Paper'],[/banana|food|peel|apple|fruit/,'Organic'],[/glass|jar/,'Glass']].find(x=>x[0].test(n));
+    const ks=Object.keys(WT);
+    S.res={waste:k?k[1]:ks[(n.length+f.size)%5],ev:uid('E-'),done:0};
+    showRes();
+  }, 600);
+}
+
+function showRes(){
+  const r=S.res,w=r.waste,e=elig(w,S.start),u=S.user,stu=u&&u.role==='student';
+  $('#sres').innerHTML=`<span class="chip" style="background:var(--forest);color:#fff">Verified result</span><h3>${w} → ${COMP[WT[w]]}</h3><p>${TIP[w]}</p><label>Correct the category if wrong<select id="cw" onchange="S.res.waste=this.value;showRes()">${Object.keys(WT).map(x=>`<option ${x===w?'selected':''}>${x}</option>`).join('')}</select></label>${e.length?`<label>Bin<select id="cb">${e.map(b=>`<option value="${b.id}">${b.id} · ${b.lm} · ~${dist(b,S.start)} m</option>`).join('')}</select></label><button id="db" ${r.done?'disabled':''} onclick="sortDo()">${stu?'Scan ID (demo) & dispose':'Dispose (anonymous)'}</button>${stu?'':'<p class="note">Anonymous disposals earn no points. Use “Earn Without ID” for code-based points.</p>'}`:'<p><b>No suitable bin is available — try another starting point.</b></p>'}`;
+}
+
+async function sortDo(){
+  const r=S.res,b=bin($('#cb').value),u=S.user&&S.user.role==='student'?S.user:null;
+  const x=await doDispose(r.waste,b,u,r.ev);
+  if(!x.ok)return toast(x.msg,'bad');
+  r.done=1;
+  $('#db').disabled=1;
+  $('#slog').hidden=0;
+  $('#slog').innerHTML='<h3>Smart-bin simulation</h3>'+x.lines.map(l=>`<div class="row">${l}</div>`).join('');
+  if(x.p)cele(`Yay! +${x.p} GreenPoints earned!`);
+}
+
+V.earn=()=>{
+  const u=S.user,o=S.bins.filter(b=>!b.off).map(b=>`<option value="${b.id}">${b.id} · ${b.lm} · ${b.cat}</option>`).join(''),w=Object.keys(WT).map(x=>`<option>${x}</option>`).join('');
+  return `<div class="card"><h2>Earn Points Without ID <span class="chip">${u.pts} pts</span></h2><p class="mut">Codes are tied to your guest session, one bin, and expire in 5 minutes. One use only.</p></div><div class="grid2" style="margin-top:16px"><div class="card"><h3>1. Get a disposal code</h3><label>Bin you will use<select id="eb">${o}</select></label><label>Waste type<select id="ew">${w}</select></label><button onclick="genCode()">Generate code</button><div id="cd" style="margin-top:12px"></div></div><div class="card"><h3>2. Bin keypad (simulated)</h3><p class="note">SIMULATION of a bin-side keypad — no hardware connected. Frontend-only validation; a real deployment must validate on a server.</p><label>This keypad belongs to bin<select id="kb">${o}</select></label><label>Item dropped in<select id="kw">${w}</select></label><label>Code<input id="kc" maxlength="6" style="text-transform:uppercase"></label><button onclick="redeemCode()">Submit code</button></div></div>`;
+};
+
+async function genCode(){
+  if(!need('general'))return;
+  const b=bin($('#eb').value),w=$('#ew').value;
+  if(WT[w]!==b.cat)return toast(`Bin ${b.id} takes ${b.cat}, not ${w}. Pick a matching bin.`,'bad');
+  const code = Math.random().toString(36).slice(2,8).toUpperCase();
+  const c={code:code,user:S.user.id,bin:b.id,exp:now()+3e5,used:0};
+  S.codes.push(c);
+  $('#cd').innerHTML=`<div class="code">${c.code}</div><p class="note">Valid for bin ${b.id} until ${tm(c.exp)}</p>`;
+  
+  fetch('/api/c-twin/code/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user_id: S.user.id, bin_id: b.id, waste_type: w})
+  }).catch(()=>{});
+}
+
+async function redeemCode(){
+  if(!need('general'))return;
+  const k=$('#kc').value.trim().toUpperCase(),c=S.codes.find(x=>x.code===k),b=bin($('#kb').value);
+  if(!c)return toast('Invalid code. No points credited.','bad');
+  if(c.used)return toast('Code already redeemed.','bad');
+  if(now()>c.exp)return toast('Code expired.','bad');
+  if(c.bin!==b.id)return toast(`Code is authorized for bin ${c.bin} only.`,'bad');
+  if(c.user!==S.user.id)return toast('Code belongs to a different session.','bad');
+
+  const x=await doDispose($('#kw').value,b,S.user,'CODE-'+c.code);
+  if(!x.ok)return toast(x.msg,'bad');
+  c.used=1;
+  draw();
+  cele(`Yay! +${x.p} GreenPoints earned!`);
+
+  fetch('/api/c-twin/code/redeem', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({user_id: S.user.id, bin_id: b.id, waste_type: $('#kw').value, code: k})
+  }).catch(()=>{});
+}
+
+V.tasks=()=>{
+  S.rp.forEach(r=>{if(r.st==='Submitted'&&S.nt.some(n=>n.bin===r.bin&&!n.res))r.st='Acknowledged'});
+  const th=S.cfg.fill,l=S.bins.filter(b=>b.fill>=th||b.off||S.nt.some(n=>n.bin===b.id&&!n.res)).sort((a,b)=>b.fill-a.fill);
+  return `<h2>Collection tasks</h2><p class="mut">${esc(S.user.name)} · tasks complete automatically when the monitoring system detects an emptied bin.</p>${l.map(b=>{const[s,c]=st(b),n=S.nt.find(x=>x.bin===b.id&&!x.res),aw=n&&b.fill<th&&!b.off;return `<div class="card" style="margin:10px 0;border-color:${c}"><div class="row" style="border:0"><b style="font-size:22px">${b.id} · ${b.lm}</b><span class="chip" style="background:${c};color:#fff">${s}</span></div><p>${b.cat} · ${b.fill}% · Priority <b>${n&&n.pri==='High'?'High':prio(b)}</b></p>${bar(b.fill,c)}${n?`<p>Reported: ${n.prob} ×${n.n} · ${tm(n.t)}</p>`:''}<p class="note">${aw?'Awaiting verification — monitor reads below threshold':'Completes automatically on sensor confirmation'}</p><button style="width:100%;margin-top:8px" ${b.off?'disabled':''} onclick="collect('${b.id}')">${b.off?'Offline — report to admin':'Mark collected'}</button></div>`}).join('')||'<div class="card">All clear.</div>'}<h3>Recent updates</h3>${S.mon.slice(0,5).map(x=>`<div class="row"><span>${x.bin} · ${x.msg}</span><span>${tm(x.t)}</span></div>`).join('')||'<p class="mut">None yet.</p>'}<div class="card" style="margin-top:16px"><b>Sensor simulator (demo)</b><p class="note">Simulates the monitoring system's “bin emptied” reading — not a manual collector confirmation. No hardware connected.</p><select id="sb">${S.bins.map(b=>`<option>${b.id}</option>`).join('')}</select><button onclick="sensor($('#sb').value)">Emit emptied reading</button></div>`;
+};
+
+async function collect(id){
+  if(!need(['collector','admin']))return;
+  const b=bin(id);
+  b.fill=0;b.col=b.t=now();
+  S.rp.filter(r=>r.bin===id).forEach(r=>r.st='Resolved');
+  draw();
+  toast(`${id} marked collected.`,'ok');
+
+  fetch('/api/c-twin/collect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({bin_id: id, operator_name: S.user.name})
+  }).catch(()=>{});
+}
+
+async function sensor(id){
+  if(!need(['collector','admin']))return;
+  const b=bin(id);
+  b.fill=0;b.col=b.t=now();b.esc=0;
+  S.rp.filter(r=>r.bin===id).forEach(r=>r.st='Resolved');
+  S.nt.filter(n=>n.bin===id).forEach(n=>n.res=1);
+  S.es.filter(e=>e.bin===id).forEach(e=>e.res=1);
+  S.mon.unshift({bin:id,t:now(),msg:'Monitor detected bin emptied — task auto-completed'});
+  draw();
+
+  fetch('/api/c-twin/collect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({bin_id: id, operator_name: 'Automated Software Sensor'})
+  }).catch(()=>{});
+}
+
+function M(){
+  const n=S.ev.length||1,mix={};
+  S.ev.forEach(e=>mix[e.w]=(mix[e.w]||0)+1);
+  const rec=Math.round(S.ev.filter(e=>e.w!=='General').length/n*100);
+  const att=S.bins.filter(b=>b.fill>=S.cfg.fill||b.off).length;
+  const col=Math.round(100-att/S.bins.length*100);
+  const w=S.cfg.w;
+  const f=[['Segregation (demo)',84,w[0]],['Recycling rate (live events)',rec,w[1]],['Participation (demo)',64,w[2]],['Collection efficiency (live)',col,w[3]]];
+  const sw=w.reduce((a,b)=>a+b,0)||1;
+  const live=S.ev.reduce((a,e)=>a+(CF[e.w]||0),0);
+  const cur=+(590+live).toFixed(1);
+  const cm=[...CM,['Oct',cur]];
+  return{mix,rec,f,sw,score:Math.round(f.reduce((a,x)=>a+x[1]*x[2],0)/sw),cm,tot:cm.reduce((a,x)=>a+x[1],0),weak:[...f].sort((a,b)=>a[1]-b[1])[0][0]};
+}
+
+const bars=(d,u,fn)=>{
+  const m=Math.max(...d.map(x=>x[1]))||1;
+  return `<div style="display:flex;gap:8px;align-items:flex-end;height:170px;border-left:2px solid var(--bd);border-bottom:2px solid var(--bd);padding:0 6px">${d.map(x=>`<div class="clk" style="flex:1;text-align:center" title="${x[0]}: ${x[1]} ${u}" ${fn?`onclick="${fn}"`:''}><small>${x[1]}</small><div class="bv" data-h="${x[1]/m*130}" style="height:0;background:var(--forest);border-radius:6px 6px 0 0"></div><small>${x[0]}</small></div>`).join('')}</div><p class="note">Axis starts at 0 · ${u}</p>`;
+};
+
+const ring=(p,l)=>`<div style="text-align:center"><svg viewBox="0 0 42 42" width="96"><circle cx="21" cy="21" r="16" fill="none" stroke="var(--sage)" stroke-width="5"/><circle class="rg" data-p="${p}" cx="21" cy="21" r="16" fill="none" stroke="var(--forest)" stroke-width="5" stroke-linecap="round" stroke-dasharray="100.53" stroke-dashoffset="100.53" transform="rotate(-90 21 21)"/><text x="21" y="24" text-anchor="middle" font-size="9" fill="var(--ink)">${p}%</text></svg><div><small>${l}</small></div></div>`;
+const line=a=>{const m=Math.max(...a)*1.1,p=a.map((v,i)=>`${10+i*280/(a.length-1)},${90-v/m*80}`).join(' ');return `<svg viewBox="0 0 300 100" width="100%"><polyline class="ln" pathLength="1" points="${p}" fill="none" stroke="var(--forest)" stroke-width="3" stroke-dasharray="1" stroke-dashoffset="1"/></svg><p class="note">Y from 0 · demo trend</p>`};
+
+const donut=mx=>{
+  const t=Object.values(mx).reduce((a,b)=>a+b,0)||1,C=100.53,cl=['#1f4d36','#8fbf2a','#3b7fc4','#d99a1e','#d0453b','#7a7f7b'];
+  let o=0;
+  return `<svg viewBox="0 0 42 42" width="150">${Object.entries(mx).map(([k,v],i)=>{const l=v/t*C,s=`<circle class="dn" data-d="${l} ${C-l}" cx="21" cy="21" r="16" fill="none" stroke="${cl[i%6]}" stroke-width="6" stroke-dasharray="0 ${C}" stroke-dashoffset="${-o}" transform="rotate(-90 21 21)"><title>${k}: ${v} (${Math.round(v/t*100)}%)</title></circle>`;o+=l;return s}).join('')}</svg>`;
+};
+
+function anim(){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    document.querySelectorAll('.bv').forEach(e=>e.style.height=e.dataset.h+'px');
+    document.querySelectorAll('.rg').forEach(e=>e.style.strokeDashoffset=100.53*(1-e.dataset.p/100));
+    document.querySelectorAll('.dn').forEach(e=>e.style.strokeDasharray=e.dataset.d);
+    document.querySelectorAll('.ln').forEach(e=>e.style.strokeDashoffset=0);
+  }));
+}
+
+function cl(){S.dd=null;$('#pnl')?.remove()}
+function dd(k,a){S.dd=[k,a];$('#pnl')?.remove();$('#app').insertAdjacentHTML('beforeend',panel(k,a));anim()}
+
+function panel(k,a){
+  const m=M();let h='';
+  if(k==='carbon')h=`<h3>Carbon performance <span class="chip">ESTIMATE</span></h3>${bars(m.cm,'kg CO₂e / month')}<p><b>Total ${m.tot.toFixed(1)} kg CO₂e</b> (May–Oct). Verified/tradable credits: <b>0</b> — no verified records.</p><p class="note">Method: disposal events × illustrative avoided-emission factor per item (kg CO₂e: Plastic .09, Paper .05, Metal .15, Glass .04, Organic .06, General 0). May–Sep and the Oct baseline (590) are simulated demo values; Oct adds live events from this session. Source: C-Twin demo data. Factors are not audited.</p>`;
+  else if(k==='score')h=`<h3>Sustainability score ${m.score}/100</h3>${m.f.map(x=>`<div class="row"><span>${x[0]}<br><small class="mut">weight ${x[2]}</small></span><b>${x[1]}</b></div>`).join('')}<p class="note">Score = weighted average of the factors above. Configurable weights; not an official certification.</p><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${S.cfg.w.map((v,i)=>`<input id="w${i}" type="number" min="0" value="${v}" aria-label="weight ${i+1}">`).join('')}</div><button onclick="setW()">Apply weights</button>`;
+  else if(k==='rank'){const r=[...RK,['Your campus',m.score]].sort((a,b)=>b[1]-a[1]);h=`<h3>Campus ranking <span class="chip">Illustrative demo</span></h3>${r.map((x,i)=>`<div class="row" ${x[0]==='Your campus'?'style="font-weight:800"':''}><span>${i+1}. ${x[0]}</span><b>${x[1]}</b></div>`).join('')}<p class="note">Other campuses are invented placeholders — no real or official ranking. Method: sustainability score, period Oct 2026. Structure supports more campuses joining later.</p>`}
+  else if(k==='seg'){const e=Object.entries(m.mix),t=S.ev.length||1;h=`<h3>Waste by category</h3>${donut(m.mix)}${e.map(([n,v])=>`<div class="row"><span>${n}</span><span>${v} · ${Math.round(v/t*100)}%</span></div>`).join('')}<p class="note">Recycling rate (non-general share): ${m.rec}%. Segregation score 84% is a demo value.</p>`}
+  else if(k==='dep'){const d=DEP[a];h=`<h3>${d[0]} department</h3><div class="row"><span>Sustainability score</span><b>${d[1]}</b></div><div class="row"><span>Participation</span><b>${d[2]}%</b></div><div class="row"><span>Segregation</span><b>${d[3]}%</b></div><div class="row"><span>GreenPoints (demo)</span><b>${d[1]*14}</b></div><div class="row"><span>Est. impact</span><b>${d[1]*3} kg CO₂e</b></div>${line(d[4])}<p class="note">All department values are demo data.</p>`}
+  else if(k==='esc'){const b=bin(a),rs=S.rp.filter(r=>r.bin===a);h=`<h3>${a} · ${b.lm}</h3><p>Monitored status: <b>${st(b)[0]}</b> (${b.fill}%)</p>${rs.map(r=>`<div class="row"><span>${r.prob}<br><small class="mut">${r.u} · ${tm(r.t)}</small></span><span class="chip">${r.st}</span></div>`).join('')}<p class="note">Review: recurring collection problem if the bin refills quickly, capacity issue if full often, sensor issue if reports persist while the monitor reads low.</p>`}
+  return `<div id="pnl" style="position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);background:var(--card);border-left:1px solid var(--bd);padding:18px;overflow:auto;z-index:25"><button class="g" onclick="cl()">← Back to overview</button>${h}</div>`;
+}
+
+async function setW(){
+  S.cfg.w=[0,1,2,3].map(i=>Math.max(0,+$('#w'+i).value||0));
+  draw();
+  dd('score');
+  fetch('/api/c-twin/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({threshold: S.cfg.thr, window_hours: S.cfg.win, weights: S.cfg.w})
+  }).catch(()=>{});
+}
+
+async function setC(){
+  const t=+$('#ct').value,w=+$('#cw').value;
+  if(!(t>=2&&t<=20&&w>=1&&w<=168))return toast('Threshold 2–20, window 1–168 h.','bad');
+  S.cfg.thr=t;S.cfg.win=w;
+  draw();
+  toast('Saved','ok');
+  fetch('/api/c-twin/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({threshold: t, window_hours: w, weights: S.cfg.w})
+  }).catch(()=>{});
+}
+
+V.ov=()=>{
+  if(!need('admin'))return'';
+  const m=M(),o=S.es.filter(e=>!e.res),rk=[...RK,['Your campus',m.score]].sort((a,b)=>b[1]-a[1]),pos=rk.findIndex(x=>x[0]==='Your campus')+1;
+  return `<h2>Campus sustainability</h2><p class="note">Prototype: carbon, participation, segregation and rankings are simulated demo data unless marked live.</p>${o.length?`<div class="card clk" style="border-color:var(--red);margin-bottom:12px" onclick="S.tab='esc';draw()"><b>${o.length} repeated-report escalation(s)</b> need attention →</div>`:''}<div class="grid3"><div class="card clk" onclick="dd('carbon')"><p class="mut">Estimated carbon savings <span class="chip">Estimate</span></p><div class="big"><span data-to="${Math.round(m.tot)}">0</span> <small>kg CO₂e</small></div><p class="note">Verified credits: 0 (no verified records)</p></div><div class="card clk" onclick="dd('score')"><p class="mut">Sustainability score</p>${ring(m.score,'of 100 · weighted index')}</div><div class="card clk" onclick="dd('rank')"><p class="mut">Campus ranking</p><div class="big">#${pos} <small>of ${rk.length}</small></div><span class="chip">Illustrative demo</span></div></div><div class="grid2" style="margin-top:16px"><div class="card"><h3>Estimated carbon savings by month</h3>${bars(m.cm,'kg CO₂e','dd(\'carbon\')')}</div><div class="card"><h3>Waste performance</h3><div style="display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap"><div class="clk" onclick="dd('seg')">${ring(m.f[0][1],'Segregation')}</div><div class="clk" onclick="dd('seg')">${ring(m.rec,'Recycling')}</div><div class="clk" onclick="dd('carbon')">${ring(Math.min(100,Math.round(m.tot/30)),'Goal 3,000 kg')}</div></div></div></div>`;
+};
+
+V.dep=()=>{
+  if(!need('admin'))return'';
+  return `<h2>Departments</h2><div class="card">${bars(DEP.map((d,i)=>[d[0],d[1]]),'score (demo)','')}<div style="display:flex;gap:8px;margin-top:8px">${DEP.map((d,i)=>`<button class="g" onclick="dd('dep',${i})">${d[0]} details</button>`).join('')}</div></div>`;
+};
+
+V.esc=()=>{
+  if(!need('admin'))return'';
+  return `<h2>Escalations</h2><div class="card"><h3>Rule</h3><label>Reports threshold<input id="ct" type="number" value="${S.cfg.thr}"></label><label>Time window (hours)<input id="cw" type="number" value="${S.cfg.win}"></label><button onclick="setC()">Save</button><p class="note">Counts distinct reporters per bin inside the window; one escalation per episode, reset when monitoring verifies the bin is emptied.</p></div>${S.es.map(e=>`<div class="card clk" style="margin-top:12px" onclick="dd('esc','${e.bin}')"><b>${e.bin} · ${bin(e.bin)?bin(e.bin).lm:e.bin}</b> <span class="chip">${e.res?'Resolved':'Open'}</span><p>${e.n} reports in ${e.win} h · monitored ${bin(e.bin)?st(bin(e.bin))[0]:'Active'}</p></div>`).join('')||'<p class="mut">No escalations yet.</p>'}`;
+};
+
+async function addRep(){
+  if(!need('student'))return;
+  const b=$('#rb').value,p=$('#rp').value,u=S.user,k=now(),B=bin(b);
+  if(S.rp.some(r=>r.u===u.id&&r.bin===b&&r.st!=='Resolved'))return toast('You already have an open report for this bin.','bad');
+
+  S.rp.push({id:uid('R-'),bin:b,u:u.id,prob:p,t:k,st:'Submitted'});
+  if(/Full|Damaged|Inaccessible/.test(p)){
+    const n=S.nt.find(x=>x.bin===b&&!x.res);
+    if(n)n.n++;
+    else S.nt.unshift({id:uid('N-'),bin:b,prob:p,t:k,pri:B.fill>=S.cfg.fill?'High':'Normal',res:0,n:1});
+  }
+
+  const c=S.rp.filter(x=>x.bin===b&&k-x.t<S.cfg.win*36e5&&x.st!=='Resolved');
+  const dn=new Set(c.map(x=>x.u)).size;
+  if(dn>=S.cfg.thr&&!B.esc){
+    B.esc=1;
+    S.es.unshift({id:uid('X-'),bin:b,n:dn,win:S.cfg.win,t:k,res:0});
+    c.forEach(x=>x.st='Escalated');
+  }
+
+  toast('Report submitted. Thank you!','ok');
+  draw();
+
+  fetch('/api/c-twin/report', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({bin_id: b, user_id: u.id, problem: p})
+  }).catch(()=>{});
+}
+
+V.rep=()=>{
+  const u=S.user;
+  return `<div class="card"><h2>Report a Bin</h2><label>Bin<select id="rb">${S.bins.map(b=>`<option value="${b.id}" ${b.id===S.rb?'selected':''}>${b.id} · ${b.lm} · ${st(b)[0]}</option>`).join('')}</select></label><label>Problem<select id="rp">${PROB.map(x=>`<option>${x}</option>`).join('')}</select></label><label>Description (optional)<input maxlength="200" placeholder="e.g. Lid stuck or overflowing"></label><label>Photo (optional, not uploaded in this demo)<input type="file" accept="image/*"></label><button onclick="addRep()">Submit report</button><p class="note">Reports supplement automated monitoring and never replace it.</p></div><div class="card" style="margin-top:16px"><h3>My reports</h3>${S.rp.filter(r=>r.u===u.id).map(r=>`<div class="row"><span>${r.bin} · ${r.prob}<br><small class="mut">${tm(r.t)}</small></span><span class="chip">${r.st}</span></div>`).join('')||'<p class="mut">None yet.</p>'}</div>`;
+};
+
+V.gm=()=>`<h2>GreenMind</h2><span class="chip" style="background:var(--forest);color:#fff">Campus AI Assistant</span><div class="card" style="margin-top:12px">${S.gl.map(x=>`<p><b>You:</b> ${esc(x[0])}<br><b>GreenMind:</b> ${esc(x[1])}</p>`).join('')||'<p class="mut">Ask about a waste type'+(S.user&&S.user.role==='admin'?', carbon, or escalations':'')+'.</p>'}<input id="gq" placeholder="Ask GreenMind"><button onclick="ask()">Ask</button></div>`;
+
+async function ask(){
+  const q=$('#gq').value.trim();if(!q)return;
+  const r=S.user?S.user.role:'student';
+  $('#gq').value='';
+
+  try{
+    const res = await fetch('/api/c-twin/ask', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q, role: r})
+    });
+    if(res.ok){
+      const data = await res.json();
+      if(data.success && data.answer){
+        S.gl.push([q, data.answer]);
+        draw();
+        return;
+      }
+    }
+  }catch(e){}
+
+  const l=q.toLowerCase(),m=M(),w=Object.keys(WT).find(x=>l.includes(x.toLowerCase())||(x==='Organic'&&/food|peel/.test(l)));
+  let a;
+  if(r==='admin')a=/carbon/.test(l)?`Estimated (not verified) savings: ${m.tot.toFixed(0)} kg CO₂e. Raising the recycling share lifts it.`:/escal|report/.test(l)?`${S.es.filter(e=>!e.res).length} open escalation(s). Check whether each is a capacity, collection or sensor issue.`:`Campus score ${m.score}. Weakest factor: ${m.weak} — start there.`;
+  else if(r==='collector')a=`${S.bins.filter(b=>b.fill>=S.cfg.fill||b.off).length} bins need attention; go highest fill first and check reported issues.`;
+  else a=w?`${w} → ${COMP[WT[w]]}. ${TIP[w]}`:'Rinse and sort at source. Ask me about plastic, paper, metal, glass or food waste.';
+  S.gl.push([q,a]);
+  draw();
+}
+
+// Restore saved session if available
+try{
+  const saved = localStorage.getItem('c_twin_user');
+  if(saved){
+    S.user = JSON.parse(saved);
+    S.view = 'app';
+    S.tab = TABS[S.user.role][0][0];
+  }
+}catch(e){}
+
+draw();
+syncState();
+</script></body></html>

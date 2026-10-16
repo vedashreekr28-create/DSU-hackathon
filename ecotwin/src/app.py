@@ -15,6 +15,7 @@ from digital_twin_service import (
     simulate_sensor_telemetry,
     get_dashboard_data,
 )
+import c_twin_service
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
@@ -28,11 +29,19 @@ init_db()
 
 
 @app.route("/")
+@app.route("/c-twin")
+@app.route("/ctwin")
 def dashboard():
-    """Main Digital Twin Dashboard (Idempotent GET - never mutates state)."""
+    """Main Digital Twin Dashboard and Faithful C-Twin video interface."""
     student_id = request.args.get("student_id", "student_101")
     data = get_dashboard_data(student_id=student_id)
-    return render_template("dashboard.html", data=data, student_balance=data["student_balance"])
+    c_twin_state = c_twin_service.get_c_twin_state(student_id=student_id)
+    return render_template(
+        "dashboard.html",
+        data=data,
+        student_balance=data["student_balance"],
+        c_twin_state=c_twin_state
+    )
 
 @app.route("/classify")
 def classify_view():
@@ -356,6 +365,210 @@ def api_collect():
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# --- C-TWIN MASTER API ENDPOINTS (FULL SUPABASE INTEGRATION) ---
+
+@app.route("/api/c-twin/state", methods=["GET"])
+def api_c_twin_state():
+    """Returns the synchronized real-time state for the C-Twin UI."""
+    try:
+        student_id = request.args.get("student_id", "student_101")
+        role = request.args.get("role")
+        state = c_twin_service.get_c_twin_state(student_id=student_id, role=role)
+        return jsonify({"success": True, "data": state})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/dispose", methods=["POST"])
+def api_c_twin_dispose():
+    """Submits a waste disposal event, updating digital twin and Supabase."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        waste_type = payload.get("waste_type") or payload.get("waste")
+        bin_id = payload.get("bin_id") or payload.get("bin")
+        student_id = payload.get("student_id")
+        event_uuid = payload.get("event_uuid") or payload.get("evid")
+
+        if not waste_type or not bin_id:
+            return jsonify({"success": False, "error": "waste_type and bin_id are required"}), 400
+
+        res = c_twin_service.process_c_twin_disposal(
+            waste_type=waste_type,
+            bin_id=bin_id,
+            student_id=student_id,
+            event_uuid=event_uuid,
+        )
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/collect", methods=["POST"])
+def api_c_twin_collect():
+    """Marks a bin collected or simulates empty reading, resetting fill in Supabase."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        bin_id = payload.get("bin_id")
+        operator = payload.get("operator_name", "Garbage Collector")
+
+        if not bin_id:
+            return jsonify({"success": False, "error": "bin_id is required"}), 400
+
+        res = c_twin_service.process_c_twin_collection(bin_id=bin_id, operator_name=operator)
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/report", methods=["POST"])
+def api_c_twin_report():
+    """Submits a student bin issue report and triggers auto-escalation if needed."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        bin_id = payload.get("bin_id")
+        user_id = payload.get("user_id", "student_101")
+        problem = payload.get("problem", "Full / overflowing")
+        description = payload.get("description", "")
+        photo_url = payload.get("photo_url", "")
+
+        if not bin_id or not problem:
+            return jsonify({"success": False, "error": "bin_id and problem are required"}), 400
+
+        res = c_twin_service.submit_c_twin_report(
+            bin_id=bin_id,
+            user_id=user_id,
+            problem=problem,
+            description=description,
+            photo_url=photo_url,
+        )
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/redeem", methods=["POST"])
+def api_c_twin_redeem():
+    """Redeems GreenPoints for campus vouchers and items."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        student_id = payload.get("student_id", "student_101")
+        reward_id = payload.get("reward_id")
+
+        if not reward_id:
+            return jsonify({"success": False, "error": "reward_id is required"}), 400
+
+        res = c_twin_service.redeem_c_twin_reward(student_id=student_id, reward_id=reward_id)
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/code/generate", methods=["POST"])
+def api_c_twin_code_generate():
+    """Generates a 5-minute guest disposal code."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        user_id = payload.get("user_id", "guest")
+        bin_id = payload.get("bin_id")
+        waste_type = payload.get("waste_type")
+
+        if not bin_id or not waste_type:
+            return jsonify({"success": False, "error": "bin_id and waste_type are required"}), 400
+
+        res = c_twin_service.generate_c_twin_guest_code(
+            user_id=user_id,
+            bin_id=bin_id,
+            waste_type=waste_type,
+        )
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/code/redeem", methods=["POST"])
+def api_c_twin_code_redeem():
+    """Validates and redeems a guest code at a simulated bin keypad."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        user_id = payload.get("user_id", "guest")
+        bin_id = payload.get("bin_id")
+        waste_type = payload.get("waste_type")
+        code = payload.get("code")
+
+        if not bin_id or not waste_type or not code:
+            return jsonify({"success": False, "error": "bin_id, waste_type, and code are required"}), 400
+
+        res = c_twin_service.redeem_c_twin_guest_code(
+            user_id=user_id,
+            bin_id=bin_id,
+            waste_type=waste_type,
+            code=code,
+        )
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/config", methods=["POST"])
+def api_c_twin_config():
+    """Updates admin escalation thresholds and sustainability score weights."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        threshold = int(payload.get("threshold", 5))
+        window_hours = int(payload.get("window_hours", 24))
+        weights = payload.get("weights")
+        if weights and isinstance(weights, str):
+            try:
+                weights = json.loads(weights)
+            except Exception:
+                weights = None
+
+        res = c_twin_service.update_c_twin_config(
+            threshold=threshold,
+            window_hours=window_hours,
+            weights=weights,
+        )
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/bin/edit", methods=["POST"])
+def api_c_twin_bin_edit():
+    """Updates bin fill percentage and offline status."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        bin_id = payload.get("bin_id")
+        fill = int(payload.get("fill", 0))
+        off = bool(payload.get("off", False))
+
+        if not bin_id:
+            return jsonify({"success": False, "error": "bin_id is required"}), 400
+
+        res = c_twin_service.update_c_twin_bin(bin_id=bin_id, fill=fill, off=off)
+        return jsonify({"success": res.get("ok", False), "data": res})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/c-twin/ask", methods=["POST"])
+def api_c_twin_ask():
+    """Provides conversational AI insights from GreenMind."""
+    try:
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        question = payload.get("question", "")
+        role = payload.get("role", "student")
+
+        if not question:
+            return jsonify({"success": False, "error": "question is required"}), 400
+
+        answer = c_twin_service.ask_greenmind(question=question, role=role)
+        return jsonify({"success": True, "answer": answer})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route("/training_plot")
 def serve_training_plot():

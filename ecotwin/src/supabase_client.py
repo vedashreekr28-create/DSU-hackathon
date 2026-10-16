@@ -293,8 +293,8 @@ def update_recycling_bin_load(
             res = client.table("recycling_bins").select("*").eq("location_code", location_code).eq("accepted_category", accepted_category).execute()
             if res.data:
                 bin_row = res.data[0]
-                new_count = bin_row["item_count"] + item_delta
-                new_load = round(float(bin_row["current_load_kg"]) + weight_kg_delta, 2)
+                new_count = max(0, bin_row["item_count"] + item_delta)
+                new_load = max(0.0, round(float(bin_row["current_load_kg"]) + weight_kg_delta, 2))
                 max_cap = bin_row["max_capacity_items"]
                 fill_pct = min(100.0, round((new_count / max_cap) * 100.0, 1))
 
@@ -340,8 +340,8 @@ def update_recycling_bin_load(
             if not row:
                 return {}
 
-        new_count = row["item_count"] + item_delta
-        new_load = round(float(row["current_load_kg"]) + weight_kg_delta, 2)
+        new_count = max(0, row["item_count"] + item_delta)
+        new_load = max(0.0, round(float(row["current_load_kg"]) + weight_kg_delta, 2))
         max_cap = row["max_capacity_items"]
         fill_pct = min(100.0, round((new_count / max_cap) * 100.0, 1))
 

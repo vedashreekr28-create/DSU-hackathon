@@ -283,6 +283,114 @@ def init_db():
         conn.commit()
         print(f"Initialized database with {len(CAMPUS_LOCATIONS) * len(CAMPUS_STREAMS)} virtual campus bins.")
 
+    # 10. C-Twin Specific Tables for UI and Full Supabase Persistence
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_bins (
+        id TEXT PRIMARY KEY,
+        landmark TEXT NOT NULL,
+        dx INTEGER NOT NULL,
+        dy INTEGER NOT NULL,
+        cat TEXT NOT NULL,
+        fill INTEGER NOT NULL DEFAULT 0,
+        off INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        last_collected INTEGER NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_reports (
+        id TEXT PRIMARY KEY,
+        bin_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        problem TEXT NOT NULL,
+        description TEXT,
+        photo_url TEXT,
+        status TEXT NOT NULL DEFAULT 'Submitted',
+        created_at INTEGER NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_redemptions (
+        id TEXT PRIMARY KEY,
+        student_id TEXT NOT NULL,
+        reward_id TEXT NOT NULL,
+        reward_name TEXT NOT NULL,
+        points_cost INTEGER NOT NULL,
+        voucher_code TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_guest_codes (
+        code TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        bin_id TEXT NOT NULL,
+        waste_type TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        is_used INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_escalations (
+        id TEXT PRIMARY KEY,
+        bin_id TEXT NOT NULL,
+        report_count INTEGER NOT NULL,
+        window_hours INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Open',
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS c_twin_config (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+    """)
+
+    # Seed c_twin_config
+    cursor.execute("INSERT OR IGNORE INTO c_twin_config (key, value) VALUES ('escalation_threshold', '5')")
+    cursor.execute("INSERT OR IGNORE INTO c_twin_config (key, value) VALUES ('escalation_window_hours', '24')")
+    cursor.execute("INSERT OR IGNORE INTO c_twin_config (key, value) VALUES ('sustainability_weights', '[40, 30, 20, 10]')")
+
+    # Seed c_twin_bins
+    cursor.execute("SELECT COUNT(*) FROM c_twin_bins")
+    if cursor.fetchone()[0] == 0:
+        import time
+        now_ms = int(time.time() * 1000)
+        seed_bins = [
+            ('B01', 'Library', -55, 40, 'Recycle', 42, 0),
+            ('B02', 'Library', 55, 40, 'Paper', 68, 0),
+            ('B03', 'Cafeteria', -55, 40, 'Organic', 91, 0),
+            ('B04', 'Cafeteria', 55, 40, 'General', 55, 0),
+            ('B05', 'CSE Block', -55, 40, 'Recycle', 78, 0),
+            ('B06', 'CSE Block', 55, 40, 'Paper', 20, 0),
+            ('B07', 'ECE Block', 55, 40, 'General', 33, 0),
+            ('B08', 'Labs', -55, 40, 'Recycle', 96, 0),
+            ('B09', 'Hostel Quad', -55, 40, 'Organic', 60, 1),
+            ('B10', 'Main Gate', 55, -10, 'General', 15, 0),
+        ]
+        for bid, lm, dx, dy, cat, fill, off in seed_bins:
+            cursor.execute("""
+            INSERT OR IGNORE INTO c_twin_bins (id, landmark, dx, dy, cat, fill, off, updated_at, last_collected)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (bid, lm, dx, dy, cat, fill, off, now_ms - 1800000, now_ms - 36000000))
+
+        # Seed initial reports on B03
+        for i in range(4):
+            cursor.execute("""
+            INSERT OR IGNORE INTO c_twin_reports (id, bin_id, user_id, problem, description, photo_url, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (f"R-SEED-{i+1}", "B03", f"S-{i}", "Full / overflowing", "Overflowing onto pavement", "", "Submitted", now_ms - (i + 1) * 3600000))
+
+        conn.commit()
+
     conn.close()
 
 if __name__ == "__main__":
