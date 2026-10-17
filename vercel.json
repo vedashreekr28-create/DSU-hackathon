@@ -2,31 +2,31 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/api/$1"
     },
     {
       "source": "/classify",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/classify"
     },
     {
       "source": "/simulator",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/simulator"
     },
     {
       "source": "/simu",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/simu"
     },
     {
       "source": "/c-twin",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/c-twin"
     },
     {
       "source": "/ctwin",
-      "destination": "/api/index.py"
+      "destination": "/api/index.py?__route__=/ctwin"
     },
     {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
+      "source": "/dataset_image/(.*)",
+      "destination": "/api/index.py?__route__=/dataset_image/$1"
     }
   ]
 }

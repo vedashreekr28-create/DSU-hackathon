@@ -18,6 +18,17 @@ class VercelPathMiddleware:
         self.wsgi_app = wsgi_app
 
     def __call__(self, environ, start_response):
+        query_string = environ.get("QUERY_STRING", "")
+        # If route was forwarded explicitly via __route__ query parameter in Vercel rewrites
+        if "__route__" in query_string:
+            qs_dict = urllib.parse.parse_qs(query_string, keep_blank_values=True)
+            if "__route__" in qs_dict:
+                target_route = qs_dict.pop("__route__")[0]
+                new_qs = urllib.parse.urlencode(qs_dict, doseq=True)
+                environ["QUERY_STRING"] = new_qs
+                environ["PATH_INFO"] = target_route.split("?")[0]
+                return self.wsgi_app(environ, start_response)
+
         path_info = environ.get("PATH_INFO", "")
         # If Vercel rewrote PATH_INFO to the function name, recover the true client path
         if path_info in ("/api/index", "/api/index.py", "/api"):

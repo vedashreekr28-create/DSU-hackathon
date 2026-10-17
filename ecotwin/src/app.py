@@ -288,6 +288,7 @@ def api_dispose():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/database_status", methods=["GET"])
+@app.route("/api/supabase/status", methods=["GET"])
 def api_database_status():
     """Returns database backend status (Supabase PostgreSQL vs local replica)."""
     return jsonify({"success": True, "data": supabase_client.get_database_status()})
