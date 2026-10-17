@@ -14,14 +14,19 @@ DISPOSAL_GUIDELINES = {
     "trash": "Non-recyclable / General Waste. Dispose in sanitary landfill or municipal general waste bin."
 }
 
+_CACHED_PREDICT_MODEL = None
+
 def predict_image(image_path: str, model_path: str = None):
+    global _CACHED_PREDICT_MODEL
     if model_path is None:
         model_path = config.MODEL_SAVE_PATH
 
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Trained model not found at {model_path}. Please run train.py first.")
 
-    model = keras.models.load_model(str(model_path))
+    if _CACHED_PREDICT_MODEL is None or str(model_path) != str(config.MODEL_SAVE_PATH):
+        _CACHED_PREDICT_MODEL = keras.models.load_model(str(model_path))
+    model = _CACHED_PREDICT_MODEL
     
     # Load and preprocess image
     img = Image.open(image_path).convert("RGB")
@@ -44,7 +49,7 @@ def predict_image(image_path: str, model_path: str = None):
     print("-" * 55)
     print("Class Probabilities:")
     for cls, prob in sorted(zip(config.CLASSES, preds), key=lambda x: x[1], reverse=True):
-        bar = "█" * int(prob * 20)
+        bar = "#" * int(prob * 20)
         print(f"  {cls:<12}: {prob * 100:6.2f}% {bar}")
     print("=" * 55)
 
